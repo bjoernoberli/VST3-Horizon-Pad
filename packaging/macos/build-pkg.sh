@@ -44,17 +44,30 @@ trap 'rm -rf "$STAGING_DIR" "$COMPONENT_DIR"' EXIT
 
 cp -R "$VST3_PATH" "$STAGING_DIR/"
 
-# pkgbuild auto-analyzes any bundle under --root (a .vst3 is a bundle) and,
-# by default, may flag it BundleIsRelocatable. That tells Installer.app to
-# search the whole disk for anything sharing the plugin's bundle identifier
-# and install there instead of at --install-location - so on a machine that
-# already has a Horizon Pad.vst3 somewhere unexpected (an old manual copy,
-# a different user's Library, etc.) the installer could silently write to
-# the wrong place. A component plist pinning BundleIsRelocatable to false
-# forces the install to always land exactly at --install-location.
+# pkgbuild auto-analyzes bundles under --root and, for any it recognises as
+# relocatable (chiefly .app bundles), may flag them BundleIsRelocatable -
+# which tells Installer.app to search the whole disk for a bundle sharing
+# the same identifier and install there instead of at --install-location.
+# A .vst3 typically isn't flagged (pkgbuild's --analyze commonly returns an
+# empty component list for it), but force BundleIsRelocatable false on
+# every entry --analyze does produce, so the install location is pinned no
+# matter how pkgbuild classifies it on a given macOS/Xcode version. Uses
+# plistlib rather than PlistBuddy's `Set` because `Set` errors out when the
+# key/array entry it expects isn't there (e.g. an empty component list).
 COMPONENT_PLIST="$COMPONENT_DIR/component.plist"
 pkgbuild --analyze --root "$STAGING_DIR" "$COMPONENT_PLIST"
-/usr/libexec/PlistBuddy -c "Set :0:BundleIsRelocatable false" "$COMPONENT_PLIST"
+python3 - "$COMPONENT_PLIST" << 'PYEOF'
+import plistlib
+import sys
+
+path = sys.argv[1]
+with open(path, "rb") as f:
+    data = plistlib.load(f)
+for entry in data:
+    entry["BundleIsRelocatable"] = False
+with open(path, "wb") as f:
+    plistlib.dump(data, f)
+PYEOF
 
 pkgbuild \
     --root "$STAGING_DIR" \
