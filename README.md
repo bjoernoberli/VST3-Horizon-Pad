@@ -202,8 +202,19 @@ Double-click and follow the prompts; it installs to
 `/Library/Audio/Plug-Ins/VST3/Horizon Pad.vst3` (system-wide, so it asks for
 your password). The package is **unsigned and not notarized** - there's no
 Apple Developer ID on this project yet - so Gatekeeper will warn on first
-launch: right-click the `.pkg` and choose **Open**, or allow it under
-**System Settings > Privacy & Security**, then run it again.
+launch.
+
+What that warning looks like depends on the macOS version:
+
+- **If a dialog offers "Open" or "Open Anyway" directly** (older macOS): click
+  it and continue.
+- **If the dialog only offers "Move to Trash" and "Cancel"** (current macOS -
+  Sonoma/Sequoia and later removed the direct bypass button): click
+  **Cancel** - do *not* move it to the Trash - then go to
+  **System Settings > Privacy & Security**, scroll down to the "Security"
+  section, and you'll see *"Horizon Pad.pkg" was blocked to protect your Mac*
+  with an **Open Anyway** button next to it. Click it, confirm once more in
+  the popup that appears, then double-click the `.pkg` again to install.
 
 To uninstall, delete
 `/Library/Audio/Plug-Ins/VST3/Horizon Pad.vst3` yourself - `pkgbuild`
