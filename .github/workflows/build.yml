@@ -27,15 +27,22 @@ jobs:
 
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
 
       - name: Install Ninja
-        uses: seanmiddleditch/gha-setup-ninja@v5
+        uses: seanmiddleditch/gha-setup-ninja@v6
+
+      # Ninja needs cl.exe directly on PATH with INCLUDE/LIB set, which only
+      # happens inside a Visual Studio Developer Command Prompt - this step
+      # sets that environment up for the rest of the job (macOS/Linux no-op).
+      - name: Set up MSVC dev environment
+        if: runner.os == 'Windows'
+        uses: ilammy/msvc-dev-cmd@v1
 
       # JUCE is pulled in by FetchContent. Cache the whole _deps tree so repeat
       # runs do not re-clone it.
       - name: Cache FetchContent dependencies
-        uses: actions/cache@v4
+        uses: actions/cache@v6
         with:
           path: build/_deps
           key: ${{ runner.os }}-fetchcontent-${{ hashFiles('CMakeLists.txt') }}
@@ -48,7 +55,7 @@ jobs:
         run: cmake --build build --target HorizonPad_VST3 --config ${{ env.BUILD_TYPE }}
 
       - name: Upload VST3 artefact
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: HorizonPad-VST3-${{ matrix.name }}
           path: ${{ matrix.vst3_path }}
@@ -64,13 +71,13 @@ jobs:
 
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
 
       - name: Install Ninja
-        uses: seanmiddleditch/gha-setup-ninja@v5
+        uses: seanmiddleditch/gha-setup-ninja@v6
 
       - name: Cache FetchContent dependencies
-        uses: actions/cache@v4
+        uses: actions/cache@v6
         with:
           path: build/_deps
           key: macOS-fetchcontent-${{ hashFiles('CMakeLists.txt') }}
