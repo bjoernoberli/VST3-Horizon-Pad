@@ -39,12 +39,26 @@ mkdir -p "$OUT_DIR"
 # pkgbuild's --root mirrors --install-location: put the .vst3 in a staging
 # root exactly as it should appear under /Library/Audio/Plug-Ins/VST3/.
 STAGING_DIR="$(mktemp -d)"
-trap 'rm -rf "$STAGING_DIR"' EXIT
+COMPONENT_DIR="$(mktemp -d)"
+trap 'rm -rf "$STAGING_DIR" "$COMPONENT_DIR"' EXIT
 
 cp -R "$VST3_PATH" "$STAGING_DIR/"
 
+# pkgbuild auto-analyzes any bundle under --root (a .vst3 is a bundle) and,
+# by default, may flag it BundleIsRelocatable. That tells Installer.app to
+# search the whole disk for anything sharing the plugin's bundle identifier
+# and install there instead of at --install-location - so on a machine that
+# already has a Horizon Pad.vst3 somewhere unexpected (an old manual copy,
+# a different user's Library, etc.) the installer could silently write to
+# the wrong place. A component plist pinning BundleIsRelocatable to false
+# forces the install to always land exactly at --install-location.
+COMPONENT_PLIST="$COMPONENT_DIR/component.plist"
+pkgbuild --analyze --root "$STAGING_DIR" "$COMPONENT_PLIST"
+/usr/libexec/PlistBuddy -c "Set :0:BundleIsRelocatable false" "$COMPONENT_PLIST"
+
 pkgbuild \
     --root "$STAGING_DIR" \
+    --component-plist "$COMPONENT_PLIST" \
     --identifier "$IDENTIFIER" \
     --version "$VERSION" \
     --install-location "$INSTALL_LOCATION" \
