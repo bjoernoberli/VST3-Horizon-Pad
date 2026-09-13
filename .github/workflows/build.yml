@@ -149,16 +149,18 @@ jobs:
           name: HorizonPad-Windows-Installer
           path: release/Windows
 
-      - name: Zip combined release
-        run: |
-          cd release
-          zip -r ../HorizonPad-CrossPlatform-Release.zip macOS Windows
-
+      # Upload the folder itself rather than a .zip we build by hand:
+      # GitHub's browser download always wraps an artifact in its own zip,
+      # so a pre-zipped artifact becomes a zip-of-a-zip - and since the
+      # inner file shared the same name as the outer one, expanding it
+      # tried to produce a file with the same name in the same folder,
+      # which Archive Utility refused with "unsupported format". Uploading
+      # the raw directory means GitHub's own wrapping is the only zip layer.
       - name: Upload combined release
         uses: actions/upload-artifact@v7
         with:
           name: HorizonPad-CrossPlatform-Release
-          path: HorizonPad-CrossPlatform-Release.zip
+          path: release
           if-no-files-found: error
 
   validate:
