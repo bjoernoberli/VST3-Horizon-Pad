@@ -1,0 +1,104 @@
+name: Build
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+
+env:
+  BUILD_TYPE: Release
+
+jobs:
+  build:
+    name: Build (${{ matrix.name }})
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - name: macOS
+            os: macos-14
+            vst3_path: build/HorizonPad_artefacts/Release/VST3/Horizon Pad.vst3
+          - name: Windows
+            os: windows-2022
+            vst3_path: build/HorizonPad_artefacts/Release/VST3/Horizon Pad.vst3
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Install Ninja
+        uses: seanmiddleditch/gha-setup-ninja@v5
+
+      # JUCE is pulled in by FetchContent. Cache the whole _deps tree so repeat
+      # runs do not re-clone it.
+      - name: Cache FetchContent dependencies
+        uses: actions/cache@v4
+        with:
+          path: build/_deps
+          key: ${{ runner.os }}-fetchcontent-${{ hashFiles('CMakeLists.txt') }}
+          restore-keys: ${{ runner.os }}-fetchcontent-
+
+      - name: Configure
+        run: cmake -B build -G Ninja -DCMAKE_BUILD_TYPE=${{ env.BUILD_TYPE }}
+
+      - name: Build VST3
+        run: cmake --build build --target HorizonPad_VST3 --config ${{ env.BUILD_TYPE }}
+
+      - name: Upload VST3 artefact
+        uses: actions/upload-artifact@v4
+        with:
+          name: HorizonPad-VST3-${{ matrix.name }}
+          path: ${{ matrix.vst3_path }}
+          if-no-files-found: error
+
+  validate:
+    name: Steinberg VST3 validator
+    needs: build
+    runs-on: macos-14
+    # Deliberately non-blocking for the initial CI rollout. Once the validator
+    # is green and stable, drop this line to promote it to a hard gate.
+    continue-on-error: true
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Install Ninja
+        uses: seanmiddleditch/gha-setup-ninja@v5
+
+      - name: Cache FetchContent dependencies
+        uses: actions/cache@v4
+        with:
+          path: build/_deps
+          key: macOS-fetchcontent-${{ hashFiles('CMakeLists.txt') }}
+          restore-keys: macOS-fetchcontent-
+
+      - name: Build the plugin
+        run: |
+          cmake -B build -G Ninja -DCMAKE_BUILD_TYPE=${{ env.BUILD_TYPE }}
+          cmake --build build --target HorizonPad_VST3
+
+      # Build the validator from the VST3 SDK. Only the four submodules the
+      # validator actually needs are initialised, and the plugin examples and
+      # VSTGUI are switched off, which keeps this well under a couple of minutes.
+      - name: Build Steinberg validator
+        run: |
+          git clone --depth 1 https://github.com/steinbergmedia/vst3sdk.git vst3sdk
+          cd vst3sdk
+          git submodule update --init --depth 1 -- base cmake pluginterfaces public.sdk
+          cd ..
+          cmake -B vst3sdk-build -S vst3sdk -G Ninja \
+            -DCMAKE_BUILD_TYPE=Release \
+            -DSMTG_ENABLE_VST3_PLUGIN_EXAMPLES=OFF \
+            -DSMTG_ENABLE_VSTGUI_SUPPORT=OFF \
+            -DSMTG_ENABLE_VST3_HOSTING_EXAMPLES=OFF
+          cmake --build vst3sdk-build --target validator
+
+      - name: Run validator against Horizon Pad.vst3
+        run: |
+          VALIDATOR="$(find vst3sdk-build -type f -name validator -perm -111 | head -n 1)"
+          echo "Using validator: $VALIDATOR"
+          "$VALIDATOR" "build/HorizonPad_artefacts/Release/VST3/Horizon Pad.vst3"
