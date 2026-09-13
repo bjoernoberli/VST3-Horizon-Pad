@@ -18,26 +18,30 @@ jobs:
       fail-fast: false
       matrix:
         include:
+          # macOS builds with Ninja (installed via Homebrew, already on the
+          # runner - no marketplace action needed).
           - name: macOS
             os: macos-14
+            generator: Ninja
+            generator_args: ""
             vst3_path: build/HorizonPad_artefacts/Release/VST3/Horizon Pad.vst3
+          # Windows uses CMake's native Visual Studio generator instead of
+          # Ninja. MSBuild locates the MSVC toolchain itself, so there is no
+          # need to put cl.exe on PATH (no Developer Command Prompt / vcvars
+          # setup step required at all).
           - name: Windows
             os: windows-2022
+            generator: "Visual Studio 17 2022"
+            generator_args: "-A x64"
             vst3_path: build/HorizonPad_artefacts/Release/VST3/Horizon Pad.vst3
 
     steps:
       - name: Checkout
         uses: actions/checkout@v7
 
-      - name: Install Ninja
-        uses: seanmiddleditch/gha-setup-ninja@v6
-
-      # Ninja needs cl.exe directly on PATH with INCLUDE/LIB set, which only
-      # happens inside a Visual Studio Developer Command Prompt - this step
-      # sets that environment up for the rest of the job (macOS/Linux no-op).
-      - name: Set up MSVC dev environment
-        if: runner.os == 'Windows'
-        uses: ilammy/msvc-dev-cmd@v1
+      - name: Install Ninja (macOS)
+        if: runner.os == 'macOS'
+        run: brew install ninja
 
       # JUCE is pulled in by FetchContent. Cache the whole _deps tree so repeat
       # runs do not re-clone it.
@@ -49,7 +53,7 @@ jobs:
           restore-keys: ${{ runner.os }}-fetchcontent-
 
       - name: Configure
-        run: cmake -B build -G Ninja -DCMAKE_BUILD_TYPE=${{ env.BUILD_TYPE }}
+        run: cmake -B build -G "${{ matrix.generator }}" ${{ matrix.generator_args }} -DCMAKE_BUILD_TYPE=${{ env.BUILD_TYPE }}
 
       - name: Build VST3
         run: cmake --build build --target HorizonPad_VST3 --config ${{ env.BUILD_TYPE }}
@@ -74,7 +78,7 @@ jobs:
         uses: actions/checkout@v7
 
       - name: Install Ninja
-        uses: seanmiddleditch/gha-setup-ninja@v6
+        run: brew install ninja
 
       - name: Cache FetchContent dependencies
         uses: actions/cache@v6
