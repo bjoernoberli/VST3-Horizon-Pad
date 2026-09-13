@@ -28,9 +28,15 @@ IDENTIFIER="com.quellemusic.horizonpad.installer"
 VERSION="1.0.0"
 INSTALL_LOCATION="/Library/Audio/Plug-Ins/VST3"
 PKG_NAME="Horizon Pad.pkg"
+SCRIPTS_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/scripts" && pwd)"
 
 if [ ! -d "$VST3_PATH" ]; then
     echo "ERROR: '$VST3_PATH' not found (expected the built Horizon Pad.vst3 bundle)." >&2
+    exit 1
+fi
+
+if [ ! -x "$SCRIPTS_DIR/postinstall" ]; then
+    echo "ERROR: '$SCRIPTS_DIR/postinstall' not found or not executable." >&2
     exit 1
 fi
 
@@ -88,9 +94,17 @@ with open(path, "wb") as f:
     plistlib.dump(data, f)
 PYEOF
 
+# --scripts wires in packaging/macos/scripts/postinstall, which runs on
+# the end user's Mac right after Installer.app extracts this payload to
+# its final location - it re-signs ad-hoc there (the true last mile of
+# the distribution chain) and, critically, exits nonzero if anything is
+# missing or invalid, which makes Installer.app report a real failure
+# instead of silently showing "The installation was successful" for a
+# broken install.
 pkgbuild \
     --root "$STAGING_DIR" \
     --component-plist "$COMPONENT_PLIST" \
+    --scripts "$SCRIPTS_DIR" \
     --identifier "$IDENTIFIER" \
     --version "$VERSION" \
     --install-location "$INSTALL_LOCATION" \

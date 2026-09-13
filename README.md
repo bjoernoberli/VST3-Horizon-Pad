@@ -225,6 +225,16 @@ To uninstall, delete
 `/Library/Audio/Plug-Ins/VST3/Horizon Pad.vst3` yourself - `pkgbuild`
 packages don't register an uninstaller.
 
+The `.pkg` carries a `postinstall` script (`packaging/macos/scripts/postinstall`)
+that runs on your Mac, with the same admin privileges as the install itself,
+right after Installer.app copies the plugin into place. It re-signs the
+installed bundle ad-hoc and verifies it (the true last step of the whole
+distribution chain, after every possible copy/zip/extract along the way),
+and - importantly - exits with a failure if anything is missing or invalid.
+Installer.app only shows "The installation was successful" when that script
+actually confirms the plugin landed correctly; a broken install now shows a
+real failure dialog instead of a false "success".
+
 To build the `.pkg` yourself from a local build:
 
 ```bash
@@ -294,6 +304,8 @@ Source/
     PresetBrowser.{h,cpp}          Preset list, swatch, description, arrows
 packaging/
   macos/build-pkg.sh               Builds the unsigned .pkg installer
+  macos/scripts/postinstall        Runs on-Mac after install: re-signs + verifies
+  macos/INSTALL-INSTRUCTIONS.txt   Gatekeeper walkthrough, shipped beside the .pkg
   windows/install.bat              Self-elevating installer (Common Files\VST3)
   windows/uninstall.bat            Self-elevating uninstaller
 .github/workflows/build.yml        Build matrix, installer packaging, validator job

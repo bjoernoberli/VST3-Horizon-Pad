@@ -1,0 +1,65 @@
+#!/bin/bash
+# Horizon Pad - postinstall script.
+#
+# Runs ON THE END USER'S MAC, with root privileges, immediately after
+# Installer.app has extracted the .pkg payload to its final location. This
+# is the same "verify and re-sign at the very last possible moment"
+# principle used by the project's earlier .command-based installer
+# (originally built for Horizon Pad, later reused as a template for
+# other plugins): by the time this script runs, every possible
+# corruption point in the distribution chain - the GitHub Actions
+# artifact zip round-trip, the pkgbuild payload, Installer.app's own
+# extraction - has already happened, so re-signing here (rather than only
+# at build time) guarantees the bundle actually on disk is valid,
+# regardless of what happened upstream.
+#
+# The other half of the point: a plain pkgbuild package has no concept of
+# "verify the thing actually works" - Installer.app shows "The
+# installation was successful" the moment the payload copy finishes,
+# whether or not the installed bundle is actually a loadable plugin. A
+# NONZERO exit code from this script is what makes Installer.app report a
+# real failure dialog instead - so this script is also the gate that
+# decides whether success gets reported at all.
+#
+# Installer.app postinstall script arguments:
+#   $1 = path to this package
+#   $2 = path to the install location
+#   $3 = path to the target volume the package is being installed onto
+#        (almost always "/", but can differ if the user picks another disk)
+set -u
+
+VOLUME="${3:-/}"
+VOLUME="${VOLUME%/}"
+
+BUNDLE="$VOLUME/Library/Audio/Plug-Ins/VST3/Horizon Pad.vst3"
+
+fail () {
+    echo "postinstall: FAILED - $1" >&2
+    exit 1
+}
+
+if [ ! -d "$BUNDLE" ]; then
+    fail "'$BUNDLE' does not exist after install - the payload did not land where expected."
+fi
+
+BINARY="$(find "$BUNDLE/Contents/MacOS" -type f 2>/dev/null | head -n 1)"
+if [ -z "$BINARY" ] || [ ! -s "$BINARY" ]; then
+    fail "'$BUNDLE' has no (or an empty) executable under Contents/MacOS - the plugin binary did not install correctly."
+fi
+
+# Strip any quarantine/extended attributes and re-sign ad-hoc (this project
+# has no Apple Developer ID) right here, on the user's own disk, after
+# every copy/zip/extract step in the distribution chain has already
+# happened.
+xattr -cr "$BUNDLE" 2>/dev/null || true
+
+if ! codesign --force --deep --sign - "$BUNDLE" 2>&1; then
+    fail "codesign failed on '$BUNDLE'."
+fi
+
+if ! codesign --verify --deep --strict "$BUNDLE" 2>&1; then
+    fail "codesign verification failed on '$BUNDLE' after re-signing."
+fi
+
+echo "postinstall: '$BUNDLE' installed and verified OK."
+exit 0
