@@ -44,6 +44,25 @@ trap 'rm -rf "$STAGING_DIR" "$COMPONENT_DIR"' EXIT
 
 cp -R "$VST3_PATH" "$STAGING_DIR/"
 
+# Re-sign ad-hoc (this project has no Developer ID) right after copying
+# into the staging root. codesign's sealed-resource envelope is only valid
+# for the exact bundle contents present at sign time - any copy, artifact
+# round-trip, or repackaging step since the original build can leave a
+# stale signature, which surfaces to end users as "a sealed resource is
+# missing or invalid" the moment their DAW scans the installed plugin.
+# Re-signing the exact copy that's about to be packaged, right before
+# pkgbuild runs, guarantees it is internally consistent no matter what
+# happened upstream.
+STAGED_BUNDLE="$STAGING_DIR/$(basename "$VST3_PATH")"
+BINARY="$(find "$STAGED_BUNDLE/Contents/MacOS" -type f | head -n 1)"
+if [ -z "$BINARY" ] || [ ! -s "$BINARY" ]; then
+    echo "ERROR: no (or empty) executable found under $STAGED_BUNDLE/Contents/MacOS" >&2
+    ls -laR "$STAGED_BUNDLE" >&2
+    exit 1
+fi
+codesign --force --deep --sign - "$STAGED_BUNDLE"
+codesign --verify --deep --strict "$STAGED_BUNDLE"
+
 # pkgbuild auto-analyzes bundles under --root and, for any it recognises as
 # relocatable (chiefly .app bundles), may flag them BundleIsRelocatable -
 # which tells Installer.app to search the whole disk for a bundle sharing

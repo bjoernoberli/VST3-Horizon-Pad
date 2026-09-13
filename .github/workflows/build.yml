@@ -66,6 +66,29 @@ jobs:
       - name: Build VST3
         run: cmake --build build --target HorizonPad_VST3 --config ${{ env.BUILD_TYPE }}
 
+      # Fail loudly here rather than silently shipping a broken bundle: end
+      # users hitting "a sealed resource is missing or invalid" when a DAW
+      # scans the plugin almost always traces back to either a missing
+      # executable inside Contents/MacOS, or an ad-hoc code signature that
+      # went stale after the bundle was copied/repackaged since it was
+      # built (this project has no Developer ID, so everything is ad-hoc
+      # signed). Re-sign right after building, before this bundle goes
+      # anywhere near the artifact zip round-trip.
+      - name: Verify and re-sign macOS bundle
+        if: runner.os == 'macOS'
+        run: |
+          BUNDLE="${{ matrix.vst3_path }}"
+          BINARY="$(find "$BUNDLE/Contents/MacOS" -type f | head -n 1)"
+          if [ -z "$BINARY" ] || [ ! -s "$BINARY" ]; then
+            echo "ERROR: no (or empty) executable found under $BUNDLE/Contents/MacOS" >&2
+            ls -laR "$BUNDLE"
+            exit 1
+          fi
+          echo "Found binary: $BINARY ($(stat -f%z "$BINARY") bytes)"
+          file "$BINARY"
+          codesign --force --deep --sign - "$BUNDLE"
+          codesign --verify --deep --strict "$BUNDLE" && echo "codesign verify OK"
+
       - name: Upload VST3 artefact
         uses: actions/upload-artifact@v7
         with:
@@ -91,6 +114,24 @@ jobs:
         with:
           name: HorizonPad-VST3-macOS
           path: "dist/vst3/Horizon Pad.vst3"
+
+      # The artifact zip round-trip can leave an ad-hoc signature stale even
+      # when every file byte survived (permission-bit/ordering differences
+      # are enough to invalidate codesign's sealed resource envelope) - and
+      # if the executable itself failed to come through, better to fail here
+      # with a clear message than ship a bundle with an empty Contents/MacOS.
+      - name: Verify and re-sign downloaded bundle
+        run: |
+          BUNDLE="dist/vst3/Horizon Pad.vst3"
+          BINARY="$(find "$BUNDLE/Contents/MacOS" -type f | head -n 1)"
+          if [ -z "$BINARY" ] || [ ! -s "$BINARY" ]; then
+            echo "ERROR: the downloaded artifact is missing its executable under $BUNDLE/Contents/MacOS - the upload/download round-trip dropped it." >&2
+            ls -laR "$BUNDLE"
+            exit 1
+          fi
+          echo "Found binary: $BINARY ($(stat -f%z "$BINARY") bytes)"
+          codesign --force --deep --sign - "$BUNDLE"
+          codesign --verify --deep --strict "$BUNDLE" && echo "codesign verify OK"
 
       # Unsigned/unnotarized (see README - no Apple Developer ID on this
       # project). End users will hit a Gatekeeper warning the first time -
