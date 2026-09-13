@@ -216,6 +216,11 @@ What that warning looks like depends on the macOS version:
   with an **Open Anyway** button next to it. Click it, confirm once more in
   the popup that appears, then double-click the `.pkg` again to install.
 
+The CI artifact ships `INSTALL-INSTRUCTIONS.txt` right next to the `.pkg`
+with these same steps spelled out - handy since it's a plain text file with
+no Gatekeeper warning of its own, so it's always readable even before you've
+gotten past the warning on the `.pkg` itself.
+
 To uninstall, delete
 `/Library/Audio/Plug-Ins/VST3/Horizon Pad.vst3` yourself - `pkgbuild`
 packages don't register an uninstaller.

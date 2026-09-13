@@ -93,17 +93,21 @@ jobs:
           path: "dist/vst3/Horizon Pad.vst3"
 
       # Unsigned/unnotarized (see README - no Apple Developer ID on this
-      # project). End users will need to right-click > Open the first time.
+      # project). End users will hit a Gatekeeper warning the first time -
+      # see packaging/macos/INSTALL-INSTRUCTIONS.txt, shipped alongside the
+      # .pkg below, for the exact click-through steps (a plain .txt file
+      # has no Gatekeeper warning of its own, so it's always readable).
       - name: Build .pkg
         run: |
           chmod +x packaging/macos/build-pkg.sh
           packaging/macos/build-pkg.sh "dist/vst3/Horizon Pad.vst3" dist/pkg
+          cp packaging/macos/INSTALL-INSTRUCTIONS.txt dist/pkg/
 
       - name: Upload macOS installer
         uses: actions/upload-artifact@v7
         with:
           name: HorizonPad-macOS-Installer
-          path: dist/pkg/Horizon Pad.pkg
+          path: dist/pkg
           if-no-files-found: error
 
   package-windows:

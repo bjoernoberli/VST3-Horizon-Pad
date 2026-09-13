@@ -1,0 +1,34 @@
+Horizon Pad - macOS Installation
+=================================
+
+This installer is unsigned (no Apple Developer ID on this project yet), so
+macOS Gatekeeper will warn you before it lets you run it. Depending on your
+macOS version, that warning looks different - follow whichever one you see.
+
+CASE 1: The dialog offers "Open" or "Open Anyway" directly
+------------------------------------------------------------
+Click it, then continue through the installer.
+
+CASE 2: The dialog only offers "Move to Trash" and "Cancel"
+------------------------------------------------------------
+This is what current macOS (Sonoma, Sequoia, and later) shows the first
+time. Do this:
+
+  1. Click "Cancel". Do NOT click "Move to Trash".
+  2. Open System Settings.
+  3. Go to Privacy & Security.
+  4. Scroll down to the "Security" section near the bottom.
+  5. You'll see a line saying "Horizon Pad.pkg" was blocked to protect
+     your Mac, with an "Open Anyway" button next to it. Click it.
+  6. Enter your Mac password / Touch ID if asked.
+  7. Double-click "Horizon Pad.pkg" again. A second, smaller confirmation
+     popup appears - click "Open" (or "Open Anyway") one more time.
+  8. The installer runs normally from here. It will ask for your password
+     again to write to /Library/Audio/Plug-Ins/VST3/ - that's expected.
+
+That's it - once installed, Horizon Pad shows up in your DAW's plugin list
+like any other VST3.
+
+Uninstalling: delete
+  /Library/Audio/Plug-Ins/VST3/Horizon Pad.vst3
+yourself. This installer doesn't register an uninstaller.
