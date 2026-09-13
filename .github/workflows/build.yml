@@ -50,8 +50,15 @@ jobs:
         uses: actions/cache@v6
         with:
           path: build/_deps
-          key: ${{ runner.os }}-fetchcontent-${{ hashFiles('CMakeLists.txt') }}
-          restore-keys: ${{ runner.os }}-fetchcontent-
+          # Keyed by generator, not just OS: a cached build/_deps tree
+          # (including JUCE's FetchContent subbuild, which has its own
+          # CMakeCache.txt) is tied to whatever generator configured it.
+          # Restoring an old Ninja-configured cache under a Visual Studio
+          # config (or vice versa) makes CMake hard-fail with "Does not
+          # match the generator used previously" - scoping the key avoids
+          # that collision entirely.
+          key: ${{ runner.os }}-${{ matrix.generator }}-fetchcontent-${{ hashFiles('CMakeLists.txt') }}
+          restore-keys: ${{ runner.os }}-${{ matrix.generator }}-fetchcontent-
 
       - name: Configure
         run: cmake -B build -G "${{ matrix.generator }}" ${{ matrix.generator_args }} -DCMAKE_BUILD_TYPE=${{ env.BUILD_TYPE }}
