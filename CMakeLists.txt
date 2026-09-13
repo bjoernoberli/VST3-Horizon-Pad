@@ -8,6 +8,14 @@ set(CMAKE_CXX_EXTENSIONS OFF)
 
 if (APPLE)
     set(CMAKE_OSX_DEPLOYMENT_TARGET "10.13" CACHE STRING "Minimum macOS deployment version")
+
+    # Universal binary: one .vst3 bundle that runs natively on both Apple
+    # Silicon and Intel Macs (CMake/lipo does the fat-binary linking). Only
+    # set a default if the caller hasn't already picked architectures
+    # explicitly (e.g. a single-arch local dev build for faster iteration).
+    if (NOT CMAKE_OSX_ARCHITECTURES)
+        set(CMAKE_OSX_ARCHITECTURES "arm64;x86_64" CACHE STRING "Build architectures for macOS" FORCE)
+    endif()
 endif()
 
 # ---------------------------------------------------------------------------

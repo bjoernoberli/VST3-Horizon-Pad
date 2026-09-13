@@ -123,7 +123,10 @@ cmake --build build --target HorizonPad_VST3
 cp -R "build/HorizonPad_artefacts/Release/VST3/Horizon Pad.vst3" ~/Library/Audio/Plug-Ins/VST3/
 ```
 
-For a universal binary add `-DCMAKE_OSX_ARCHITECTURES="arm64;x86_64"`.
+The `.vst3` is a **universal binary** (arm64 + x86_64 in one bundle) by
+default — CMake sets `CMAKE_OSX_ARCHITECTURES="arm64;x86_64"` automatically
+unless you override it. For a faster single-arch dev build, pass your own
+architecture explicitly, e.g. `-DCMAKE_OSX_ARCHITECTURES="arm64"`.
 
 ### Windows
 
@@ -169,12 +172,13 @@ validator emits one benign warning — the module ships both a `moduleinfo.json`
 and an exported `IPluginCompatibility` class, and prefers the former; this is
 JUCE 8 default behaviour and not a defect in this plugin.
 
+CI has since confirmed the same result on the **macOS** runner (also 47/47).
+The validator job stays `continue-on-error: true` for now per the project's
+CI rollout plan — promote it to a hard gate once it's been observed green
+across a few more runs.
+
 ### Known gaps
 
-- The validator result above was produced on **Linux**. CI runs it on macOS,
-  where it has not yet been confirmed green — which is why the validator job in
-  CI is marked `continue-on-error: true` for now. Promote it to a hard gate once
-  it has been observed passing on the macOS runner.
 - The per-layer **solo ("S")** button is presentational. Solo is not a host
   parameter and there is no per-layer mute in the DSP yet; toggling it only
   marks the panel. Wiring it up is a planned follow-up.
@@ -186,11 +190,64 @@ JUCE 8 default behaviour and not a defect in this plugin.
 
 ---
 
+## Installing
+
+Prebuilt installers are produced by CI on every push to `main` (see
+[Continuous integration](#continuous-integration) below) - download them from
+the latest successful **Build** workflow run's Artifacts.
+
+### macOS - `Horizon Pad.pkg`
+
+Double-click and follow the prompts; it installs to
+`/Library/Audio/Plug-Ins/VST3/Horizon Pad.vst3` (system-wide, so it asks for
+your password). The package is **unsigned and not notarized** - there's no
+Apple Developer ID on this project yet - so Gatekeeper will warn on first
+launch: right-click the `.pkg` and choose **Open**, or allow it under
+**System Settings > Privacy & Security**, then run it again.
+
+To uninstall, delete
+`/Library/Audio/Plug-Ins/VST3/Horizon Pad.vst3` yourself - `pkgbuild`
+packages don't register an uninstaller.
+
+To build the `.pkg` yourself from a local build:
+
+```bash
+packaging/macos/build-pkg.sh "build/HorizonPad_artefacts/Release/VST3/Horizon Pad.vst3" dist
+```
+
+### Windows - `install.bat`
+
+Unzip the Windows installer package (it contains `Horizon Pad.vst3`,
+`install.bat` and `uninstall.bat` together - keep them side by side) and
+double-click `install.bat`. It self-elevates (one UAC prompt) and copies the
+plugin to `C:\Program Files\Common Files\VST3\`. Run `uninstall.bat` the same
+way to remove it. There's no signed installer here either - Windows
+SmartScreen may still show a warning the first time; click **More info > Run
+anyway**.
+
+### Both platforms at once
+
+The `HorizonPad-CrossPlatform-Release` CI artifact bundles the macOS `.pkg`
+and the Windows installer folder together in one zip, for handing a single
+file to someone who might be on either OS.
+
+---
+
 ## Continuous integration
 
-[`.github/workflows/build.yml`](.github/workflows/build.yml) builds the VST3 on
-macOS and Windows runners and uploads each as an artefact, then runs the
-Steinberg validator against the macOS build in a separate, non-blocking job.
+[`.github/workflows/build.yml`](.github/workflows/build.yml):
+
+1. **`build`** - builds the VST3 on macOS (universal binary) and Windows
+   (x64) runners, uploads each as a raw artefact.
+2. **`package-macos`** - turns the macOS build into an unsigned `.pkg`
+   (`packaging/macos/build-pkg.sh`).
+3. **`package-windows`** - bundles the Windows build with
+   `packaging/windows/install.bat` / `uninstall.bat` into an installer
+   folder.
+4. **`package-release`** - zips both installers together into one
+   `HorizonPad-CrossPlatform-Release` artifact.
+5. **`validate`** - runs the Steinberg validator against the macOS build, in
+   parallel, non-blocking (`continue-on-error: true`).
 
 ---
 
@@ -219,7 +276,11 @@ Source/
     GraphView.{h,cpp}              PITCH / MOD line graphs
     GlobalParamsPanel.{h,cpp}      Reverb / Delay / Filter / FX Amount + icons
     PresetBrowser.{h,cpp}          Preset list, swatch, description, arrows
-.github/workflows/build.yml        Build matrix + validator job
+packaging/
+  macos/build-pkg.sh               Builds the unsigned .pkg installer
+  windows/install.bat              Self-elevating installer (Common Files\VST3)
+  windows/uninstall.bat            Self-elevating uninstaller
+.github/workflows/build.yml        Build matrix, installer packaging, validator job
 ```
 
 ---
