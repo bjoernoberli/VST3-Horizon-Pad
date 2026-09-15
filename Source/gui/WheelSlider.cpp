@@ -8,14 +8,20 @@ namespace
 {
     juce::String captionFor (WheelSlider::Kind k)  { return k == WheelSlider::Kind::pitch ? "PITCH" : "MOD"; }
     juce::String subtitleFor (WheelSlider::Kind k) { return k == WheelSlider::Kind::pitch ? "bend the sky" : "a soft wind"; }
+    juce::String glyphFor (WheelSlider::Kind k)
+    {
+        // Design handoff's iconRowStyle glyphs: PITCH = up/down arrows, MOD = a wave.
+        return k == WheelSlider::Kind::pitch ? juce::String::fromUTF8 ("\xe2\x87\x95")
+                                             : juce::String::fromUTF8 ("\xe2\x88\xbf");
+    }
 }
 
 WheelSlider::WheelSlider (HorizonPadAudioProcessor& processorToUse, Kind kindToUse)
     : processor (processorToUse), kind (kindToUse),
       caption (captionFor (kindToUse)), subtitle (subtitleFor (kindToUse))
 {
-    slider.setColour (juce::Slider::thumbColourId, Palette::wheelAccent);
-    slider.setColour (juce::Slider::trackColourId, Palette::knobTrack);
+    slider.setColour (juce::Slider::thumbColourId, Palette::gold);
+    slider.setColour (juce::Slider::trackColourId, Palette::cardBg);
 
     if (kind == Kind::pitch)
         slider.setRange (-horizon::PerformanceState::kPitchBendRangeSemitones,
@@ -66,43 +72,38 @@ void WheelSlider::refreshFromProcessor()
 
 void WheelSlider::resized()
 {
-    auto r = getLocalBounds();
-    r.removeFromTop (34);
-    r.removeFromBottom (36);
-    slider.setBounds (r.reduced (getWidth() / 2 - 12, 4));
+    const auto slots = computeColumnSlots (getLocalBounds());
+    slider.setBounds (slots.control.withSizeKeepingCentre (24, slots.control.getHeight()));
 }
 
 void WheelSlider::paint (juce::Graphics& g)
 {
-    auto r = getLocalBounds();
+    drawColumnCard (g, getLocalBounds().toFloat());
 
-    {
-        auto header = r.removeFromTop (34);
-        auto captionArea = header.withY (16).withHeight (18);
-        g.setColour (Palette::text);
-        g.setFont (labelFont (13.0f, true));
-        g.drawText (caption, captionArea, juce::Justification::centred);
-    }
+    const auto slots = computeColumnSlots (getLocalBounds());
 
-    {
-        auto footer = r.removeFromBottom (36);
+    g.setColour (Palette::iconGlyph);
+    g.setFont (juce::Font (juce::FontOptions().withHeight (20.0f)));
+    g.drawText (glyphFor (kind), slots.icon, juce::Justification::centred);
 
-        auto subtitleArea = footer.removeFromTop (16);
-        g.setColour (Palette::textFaint);
-        g.setFont (labelFont (10.5f));
-        g.drawText (subtitle, subtitleArea, juce::Justification::centred);
+    g.setColour (Palette::textKnobLabel);
+    g.setFont (labelFont (11.5f, true));
+    g.drawText (caption, slots.label, juce::Justification::centred);
 
-        juce::String valueText;
+    g.setColour (Palette::textDim);
+    g.setFont (labelFont (10.5f).italicised());
+    g.drawFittedText (subtitle, slots.caption, juce::Justification::centred, 2);
 
-        if (kind == Kind::pitch)
-            valueText = (slider.getValue() >= 0.0 ? "+" : "") + juce::String (slider.getValue(), 1) + " st";
-        else
-            valueText = juce::String (juce::roundToInt (slider.getValue() * 100.0)) + "%";
+    juce::String valueText;
 
-        g.setColour (Palette::text);
-        g.setFont (labelFont (13.0f, true));
-        g.drawText (valueText, footer.removeFromTop (18), juce::Justification::centred);
-    }
+    if (kind == Kind::pitch)
+        valueText = (slider.getValue() >= 0.0 ? "+" : "") + juce::String (slider.getValue(), 1) + " st";
+    else
+        valueText = juce::String (juce::roundToInt (slider.getValue() * 100.0)) + "%";
+
+    g.setColour (Palette::textValue);
+    g.setFont (labelFont (12.0f, true));
+    g.drawText (valueText, slots.value, juce::Justification::centred);
 }
 
 } // namespace horizon::ui

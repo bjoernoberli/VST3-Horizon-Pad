@@ -13,6 +13,7 @@ PadKnob::PadKnob (HorizonPadAudioProcessor& processorToUse, int layerIndex,
 {
     slider.setColour (juce::Slider::rotarySliderFillColourId, accent);
     slider.setColour (juce::Slider::rotarySliderOutlineColourId, Palette::knobTrack);
+
     // -135deg..+135deg (a 270deg sweep with a 90deg gap centred at the
     // bottom), matching the design handoff's ringKnob() geometry exactly.
     slider.setRotaryParameters (juce::MathConstants<float>::pi * 1.25f,
@@ -30,47 +31,46 @@ PadKnob::~PadKnob() = default;
 
 void PadKnob::resized()
 {
-    auto r = getLocalBounds();
-    r.removeFromTop (34); // status dot + caption, painted
-    r.removeFromBottom (36); // subtitle + percentage, painted
-
-    const auto size = juce::jmin (r.getWidth(), r.getHeight()) - 8;
-    slider.setBounds (r.withSizeKeepingCentre (size, size));
+    const auto slots = computeColumnSlots (getLocalBounds());
+    const auto size = juce::jmin (slots.control.getWidth(), slots.control.getHeight(), 70);
+    slider.setBounds (slots.control.withSizeKeepingCentre (size, size));
 }
 
 void PadKnob::paint (juce::Graphics& g)
 {
-    auto r = getLocalBounds();
+    drawColumnCard (g, getLocalBounds().toFloat());
 
-    // --- status dot + caption
+    const auto slots = computeColumnSlots (getLocalBounds());
+
+    // --- Status dot: lit (with a glow) once the pad is audible, matching the
+    // design's dotStyle threshold (vol > 0.04).
     {
-        auto header = r.removeFromTop (34);
-        const auto dotSize = 8.0f;
-        auto dot = juce::Rectangle<float> (dotSize, dotSize).withCentre ({ (float) header.getCentreX(), 10.0f });
-        g.setColour (accent);
+        const auto lit = slider.getValue() > 0.04;
+        const auto dotSize = 14.0f;
+        auto dot = juce::Rectangle<float> (dotSize, dotSize).withCentre (slots.icon.toFloat().getCentre());
+
+        if (lit)
+        {
+            g.setColour (accent.withAlpha (0.35f));
+            g.fillEllipse (dot.expanded (5.0f));
+        }
+
+        g.setColour (lit ? accent : Palette::dotUnlit);
         g.fillEllipse (dot);
-
-        auto captionArea = header.withY (16).withHeight (18);
-        g.setColour (Palette::text);
-        g.setFont (labelFont (13.0f, true));
-        g.drawText (caption, captionArea, juce::Justification::centred);
     }
 
-    // --- subtitle + percentage
-    {
-        auto footer = r.removeFromBottom (36);
+    g.setColour (Palette::textKnobLabel);
+    g.setFont (labelFont (11.5f, true));
+    g.drawText (caption, slots.label, juce::Justification::centred);
 
-        auto subtitleArea = footer.removeFromTop (16);
-        g.setColour (Palette::textFaint);
-        g.setFont (labelFont (10.5f));
-        g.drawText (subtitle, subtitleArea, juce::Justification::centred);
+    g.setColour (Palette::textDim);
+    g.setFont (labelFont (10.5f).italicised());
+    g.drawFittedText (subtitle, slots.caption, juce::Justification::centred, 2);
 
-        auto pctArea = footer.removeFromTop (18);
-        g.setColour (Palette::text);
-        g.setFont (labelFont (13.0f, true));
-        g.drawText (juce::String (juce::roundToInt (slider.getValue() * 100.0)) + "%",
-                    pctArea, juce::Justification::centred);
-    }
+    g.setColour (Palette::textValue);
+    g.setFont (labelFont (12.0f, true));
+    g.drawText (juce::String (juce::roundToInt (slider.getValue() * 100.0)) + "%",
+               slots.value, juce::Justification::centred);
 }
 
 } // namespace horizon::ui

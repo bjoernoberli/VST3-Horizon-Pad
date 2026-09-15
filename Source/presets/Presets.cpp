@@ -35,12 +35,14 @@ static const std::vector<Preset>& buildPresets()
         // 2. ALPENGLUHEN (alpenglow) - warm light spreading across the peaks.
         // Clearing steps forward, wide image, medium reverb.
         //
-        // juce::String's const-char* constructor assumes UTF-8, so the raw
-        // \xc3\xbc escape for u-umlaut renders correctly (it terminates
-        // cleanly at the following 'h', unlike TitleBanner's tagline fix).
+        // juce::String's const-char* constructor assumes plain ASCII (see
+        // Presets.h) and asserts - crashing outright in this project's build
+        // - on the high bytes in the raw \xc3\xbc (u-umlaut) UTF-8 escape, so
+        // this one name has to be built explicitly as UTF-8 instead of via
+        // the struct's normal aggregate-init string literal.
         // ------------------------------------------------------------------
         {
-            "Alpengl\xc3\xbchen",
+            juce::String (juce::CharPointer_UTF8 ("Alpengl\xc3\xbchen")),
             "Warm light spreading wide across the peaks.",
             { 0.45f, 0.65f, 0.55f, 0.35f },
             { 0.60f, 0.65f, 0.80f, 0.45f }

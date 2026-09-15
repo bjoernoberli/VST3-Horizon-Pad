@@ -10,65 +10,70 @@ TitleBanner::TitleBanner()
 
 void TitleBanner::paint (juce::Graphics& g)
 {
-    auto bounds = getLocalBounds().toFloat();
+    // No background here - the shared panel (drawHorizonPanel, painted once
+    // behind the whole window by the editor) already provides the gradient,
+    // skyline and glow. This component only draws the header content itself:
+    // wordmark, then the mountain-sunrise logo, then the tagline - in that
+    // order, matching the design handoff exactly (the logo sits *below* the
+    // wordmark, not above it).
+    auto r = getLocalBounds().toFloat();
 
-    g.fillAll (Palette::background);
-
-    // --- Warm radial glow behind the title.
+    // --- Wordmark: a gradient serif italic, hi -> warm gold.
+    auto wordmarkArea = r.removeFromTop (46.0f);
     {
-        const auto glowCentre = bounds.getCentre().withY (bounds.getY() + bounds.getHeight() * 0.35f);
-        const auto glowRadius = bounds.getWidth() * 0.38f;
-
-        juce::ColourGradient glow (Palette::glowMid.withAlpha (0.55f), glowCentre.x, glowCentre.y,
-                                   Palette::background.withAlpha (0.0f), glowCentre.x, glowCentre.y - glowRadius, true);
-        glow.isRadial = true;
-        glow.addColour (0.35, Palette::glowMid.withAlpha (0.28f));
-        g.setGradientFill (glow);
-        g.fillRect (bounds);
+        juce::ColourGradient grad (Palette::text, wordmarkArea.getCentreX() - 90.0f, wordmarkArea.getCentreY(),
+                                   Palette::wordmarkGoldEnd, wordmarkArea.getCentreX() + 90.0f, wordmarkArea.getCentreY(), false);
+        g.setGradientFill (grad);
+        g.setFont (titleFont (32.0f));
+        g.drawText ("Horizon Pad", wordmarkArea, juce::Justification::centred);
     }
 
-    // --- Mountain-sunrise emblem.
+    r.removeFromTop (10.0f);
+
+    // --- Logo: a small sun over a mountain range, drawn in the SVG's own
+    // 46x46 unit space via a graphics transform (viewBox="0 0 46 46").
+    auto logoArea = r.removeFromTop (64.0f).withSizeKeepingCentre (64.0f, 64.0f);
     {
-        const auto emblemSize = 34.0f;
-        auto emblem = juce::Rectangle<float> (emblemSize, emblemSize)
-                         .withCentre ({ bounds.getCentreX(), bounds.getY() + 34.0f });
+        // A soft halo behind the emblem (the design's drop-shadow(0 0 10px ...)).
+        juce::ColourGradient halo (Palette::logoGold.withAlpha (0.35f), logoArea.getCentreX(), logoArea.getCentreY(),
+                                   Palette::logoGold.withAlpha (0.0f), logoArea.getCentreX(), logoArea.getY() - 6.0f, true);
+        g.setGradientFill (halo);
+        g.fillEllipse (logoArea.expanded (18.0f));
 
-        juce::Path peak;
-        peak.startNewSubPath (emblem.getX(), emblem.getBottom());
-        peak.lineTo (emblem.getCentreX(), emblem.getY());
-        peak.lineTo (emblem.getRight(), emblem.getBottom());
-        peak.closeSubPath();
+        juce::Graphics::ScopedSaveState save (g);
+        const auto scale = logoArea.getWidth() / 46.0f;
+        g.addTransform (juce::AffineTransform::scale (scale).translated (logoArea.getX(), logoArea.getY()));
 
-        juce::ColourGradient peakGrad (Palette::glowCore, emblem.getCentreX(), emblem.getY(),
-                                       Palette::macroAccents[0].darker (0.2f), emblem.getCentreX(), emblem.getBottom(), false);
-        g.setGradientFill (peakGrad);
-        g.fillPath (peak);
+        g.setColour (Palette::logoGold);
+        g.fillEllipse (23.0f - 10.0f, 20.0f - 10.0f, 20.0f, 20.0f);
 
-        // A small sun/glow disc sitting on the peak.
-        const auto sunR = emblemSize * 0.16f;
-        g.setColour (Palette::glowCore.withAlpha (0.9f));
-        g.fillEllipse (emblem.getCentreX() - sunR, emblem.getY() - sunR * 0.4f, sunR * 2.0f, sunR * 2.0f);
+        juce::Path mountain;
+        mountain.startNewSubPath (0.0f, 33.0f);
+        mountain.lineTo (9.0f, 21.0f);
+        mountain.lineTo (16.0f, 29.0f);
+        mountain.lineTo (23.0f, 15.0f);
+        mountain.lineTo (30.0f, 29.0f);
+        mountain.lineTo (37.0f, 21.0f);
+        mountain.lineTo (46.0f, 33.0f);
+        mountain.closeSubPath();
+        g.setColour (Palette::logoMountain);
+        g.fillPath (mountain);
+
+        g.setColour (Palette::logoGold);
+        g.drawLine (1.0f, 33.5f, 45.0f, 33.5f, 1.5f);
     }
 
-    // --- Wordmark.
-    {
-        auto titleArea = bounds.withY (bounds.getY() + 58.0f).withHeight (40.0f);
-        g.setColour (Palette::text);
-        g.setFont (titleFont (30.0f));
-        g.drawText ("Horizon Pad", titleArea, juce::Justification::centred);
-    }
+    r.removeFromTop (10.0f);
 
     // --- Tagline.
-    {
-        auto tagArea = bounds.withY (bounds.getY() + 100.0f).withHeight (20.0f);
-        g.setColour (Palette::textDim);
-        g.setFont (labelFont (13.0f));
-        // Split after each \xNN escape (as separate literals) so the compiler's
-        // greedy hex-escape parsing can't swallow the following letters (e.g.
-        // "\xa4be" would otherwise be read as one 4-digit escape, not \xa4 + "be").
-        g.drawText (juce::String::fromUTF8 ("W\xc3\xa4" "g zom L\xc3\xa4" "be - a life of joy"),
-                    tagArea, juce::Justification::centred);
-    }
+    auto tagArea = r.removeFromTop (20.0f);
+    g.setColour (Palette::textDim);
+    g.setFont (labelFont (12.5f));
+    // Split after each \xNN escape (as separate literals) so the compiler's
+    // greedy hex-escape parsing can't swallow the following letters (e.g.
+    // "\xa4be" would otherwise be read as one 4-digit escape, not \xa4 + "be").
+    g.drawText (juce::String::fromUTF8 ("W\xc3\xa4" "g zom L\xc3\xa4" "be \xe2\x80\x94 a life of joy"),
+                tagArea, juce::Justification::centred);
 }
 
 } // namespace horizon::ui

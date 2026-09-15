@@ -18,45 +18,42 @@ void OutputMeter::refreshFromProcessor()
 
 void OutputMeter::paint (juce::Graphics& g)
 {
-    auto r = getLocalBounds();
+    drawColumnCard (g, getLocalBounds().toFloat());
 
-    {
-        auto header = r.removeFromTop (34);
-        auto captionArea = header.withY (16).withHeight (18);
-        g.setColour (Palette::text);
-        g.setFont (labelFont (13.0f, true));
-        g.drawText ("OUTPUT", captionArea, juce::Justification::centred);
-    }
+    const auto slots = computeColumnSlots (getLocalBounds());
 
-    auto footer = r.removeFromBottom (36);
+    g.setColour (Palette::iconGlyph);
+    g.setFont (juce::Font (juce::FontOptions().withHeight (20.0f)));
+    g.drawText (juce::String::fromUTF8 ("\xe2\x86\x92"), slots.icon, juce::Justification::centred); // "→"
 
-    // --- meter track
-    auto track = r.reduced (getWidth() / 2 - 8, 4).toFloat();
+    g.setColour (Palette::textKnobLabel);
+    g.setFont (labelFont (11.5f, true));
+    g.drawText ("OUTPUT", slots.label, juce::Justification::centred);
+
+    g.setColour (Palette::textDim);
+    g.setFont (labelFont (10.5f).italicised());
+    g.drawFittedText ("the valley", slots.caption, juce::Justification::centred, 2);
+
+    // --- meter track: a slim rounded column, matching meterOuterStyle exactly.
+    auto track = slots.control.withSizeKeepingCentre (22, slots.control.getHeight()).toFloat();
     g.setColour (Palette::meterBg);
-    g.fillRoundedRectangle (track, 8.0f);
+    g.fillRoundedRectangle (track, 11.0f);
 
-    auto fill = track;
-    fill.setTop (track.getBottom() - track.getHeight() * displayedLevel);
+    auto fill = track.reduced (1.0f);
+    fill.setTop (fill.getBottom() - fill.getHeight() * displayedLevel);
 
     if (fill.getHeight() > 0.5f)
     {
         juce::ColourGradient grad (Palette::meterFillLow, fill.getX(), fill.getBottom(),
                                    Palette::meterFillHigh, fill.getX(), fill.getY(), false);
         g.setGradientFill (grad);
-        g.fillRoundedRectangle (fill, 8.0f);
+        g.fillRoundedRectangle (fill, 10.0f);
     }
 
-    {
-        auto subtitleArea = footer.removeFromTop (16);
-        g.setColour (Palette::textFaint);
-        g.setFont (labelFont (10.5f));
-        g.drawText ("the valley", subtitleArea, juce::Justification::centred);
-
-        g.setColour (Palette::text);
-        g.setFont (labelFont (13.0f, true));
-        g.drawText (juce::String (juce::roundToInt (displayedLevel * 100.0f)) + "%",
-                    footer.removeFromTop (18), juce::Justification::centred);
-    }
+    g.setColour (Palette::textValue);
+    g.setFont (labelFont (12.0f, true));
+    g.drawText (juce::String (juce::roundToInt (displayedLevel * 100.0f)) + "%",
+               slots.value, juce::Justification::centred);
 }
 
 } // namespace horizon::ui

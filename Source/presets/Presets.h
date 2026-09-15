@@ -32,8 +32,13 @@ namespace ParamID
 */
 struct Preset
 {
-    const char* name;
-    const char* description;
+    // juce::String, not const char*: a couple of preset names (Alpenglühen)
+    // contain non-ASCII characters, and juce::String's const-char* / char[]
+    // constructor assumes plain ASCII (it asserts - and, in this project's
+    // build, crashes - on bytes above 127; see Presets.cpp for where that
+    // bites and how it's worked around).
+    juce::String name;
+    juce::String description;
 
     /** Root, Clearing, Expanse, Bloom. 0..1. */
     std::array<float, (size_t) kNumLayers> volumes;

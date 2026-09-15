@@ -35,8 +35,8 @@ MacrosPanel::~MacrosPanel() = default;
 
 void MacrosPanel::resized()
 {
-    auto r = getLocalBounds();
-    r.removeFromTop (20); // "MACROS" caption + subtitle, painted
+    const auto slots = computeColumnSlots (getLocalBounds());
+    auto r = slots.control;
 
     const auto rowHeight = r.getHeight() / 2;
     const auto colWidth = r.getWidth() / 2;
@@ -45,21 +45,32 @@ void MacrosPanel::resized()
     {
         auto cell = juce::Rectangle<int> (r.getX() + (i % 2) * colWidth, r.getY() + (i / 2) * rowHeight,
                                           colWidth, rowHeight);
-        cell.removeFromBottom (26); // caption + percentage, painted
-        const auto size = juce::jmin (cell.getWidth(), cell.getHeight()) - 4;
+        cell.removeFromTop (14);   // macro label, painted
+        cell.removeFromBottom (14); // percentage, painted
+        const auto size = juce::jmin (cell.getWidth(), cell.getHeight(), 44);
         knobs[(size_t) i].slider.setBounds (cell.withSizeKeepingCentre (size, size));
     }
 }
 
 void MacrosPanel::paint (juce::Graphics& g)
 {
-    auto r = getLocalBounds();
+    drawColumnCard (g, getLocalBounds().toFloat());
 
-    auto header = r.removeFromTop (20);
+    const auto slots = computeColumnSlots (getLocalBounds());
+
+    g.setColour (Palette::iconGlyph);
+    g.setFont (juce::Font (juce::FontOptions().withHeight (20.0f)));
+    g.drawText (juce::String::fromUTF8 ("\xe2\x97\x8d"), slots.icon, juce::Justification::centred); // "◍"
+
+    g.setColour (Palette::textKnobLabel);
+    g.setFont (labelFont (11.5f, true));
+    g.drawText ("MACROS", slots.label, juce::Justification::centred);
+
     g.setColour (Palette::textDim);
-    g.setFont (labelFont (11.0f, true));
-    g.drawText ("MACROS", header, juce::Justification::centredTop);
+    g.setFont (labelFont (10.5f).italicised());
+    g.drawFittedText ("shape the air", slots.caption, juce::Justification::centred, 2);
 
+    auto r = slots.control;
     const auto rowHeight = r.getHeight() / 2;
     const auto colWidth = r.getWidth() / 2;
 
@@ -67,17 +78,17 @@ void MacrosPanel::paint (juce::Graphics& g)
     {
         auto cell = juce::Rectangle<int> (r.getX() + (i % 2) * colWidth, r.getY() + (i / 2) * rowHeight,
                                           colWidth, rowHeight);
-        auto footer = cell.removeFromBottom (26);
+        auto labelArea = cell.removeFromTop (14);
+        auto valueArea = cell.removeFromBottom (14);
 
-        auto caption = footer.removeFromTop (14);
-        g.setColour (Palette::textFaint);
-        g.setFont (labelFont (9.0f, true));
-        g.drawText (knobs[(size_t) i].caption, caption, juce::Justification::centred);
+        g.setColour (Palette::macroLabel);
+        g.setFont (labelFont (9.5f, true));
+        g.drawText (knobs[(size_t) i].caption, labelArea, juce::Justification::centred);
 
-        g.setColour (Palette::text);
-        g.setFont (labelFont (11.0f));
+        g.setColour (Palette::textDim);
+        g.setFont (labelFont (10.0f));
         g.drawText (juce::String (juce::roundToInt (knobs[(size_t) i].slider.getValue() * 100.0)) + "%",
-                    footer, juce::Justification::centred);
+                    valueArea, juce::Justification::centred);
     }
 }
 

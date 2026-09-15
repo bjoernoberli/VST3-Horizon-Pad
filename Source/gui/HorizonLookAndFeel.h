@@ -9,34 +9,58 @@ namespace horizon::ui
     conversions (OKLCH -> linear sRGB -> gamma-encoded sRGB, Bjorn Ottosson's
     OKLab formulas) of the oklch() colours in the authoritative Claude Design
     handoff ("Horizon Pad.dc.html"), so this is a pixel-accurate palette
-    match, not an approximation. */
+    match, not an approximation. Names follow the handoff's own style names
+    (panelStyle, cardBg, pillBorder, ...) so the two stay easy to cross-check. */
 namespace Palette
 {
-    const juce::Colour background    { 0xff020306 };
+    const juce::Colour background       { 0xff020306 };
 
-    // The shared warm gradient panel behind the whole window (see
-    // TitleBanner/FooterBar), bottom-to-top: near-black -> deep amber.
+    // The one shared panel that is the whole plugin window: a warm gradient
+    // (near-black at the bottom to deep amber at the top), a thin border, a
+    // clipped mountain-skyline silhouette along the bottom, and a soft gold
+    // glow in the top-right corner. See drawHorizonPanel().
     const juce::Colour panelGradientBottom { 0xff05070d };
     const juce::Colour panelGradientLower  { 0xff060c13 };
     const juce::Colour panelGradientUpper  { 0xff211300 };
     const juce::Colour panelGradientTop    { 0xff311e00 };
+    const juce::Colour panelBorder         { 0x99232933 };
+    const juce::Colour skyline             { 0x8010141b };
+    const juce::Colour glow                { 0x29f5ae39 };
 
-    const juce::Colour panel         { 0xff10141b }; // card/pill background
-    const juce::Colour panelRaised   { 0xff12161d }; // knob inner cap / raised chrome
-    const juce::Colour panelBorder   { 0x99232933 };
-    const juce::Colour panelShadow   { 0x80010000 };
+    // Grid-card chrome (PITCH/MOD/ROOT/CLEARING/EXPANSE/BLOOM/MACROS/OUTPUT).
+    const juce::Colour cardBg           { 0xff10141b };
+    const juce::Colour cardBorder       { 0x80282e38 };
+    const juce::Colour iconGlyph        { 0xfff0bb3b };
 
-    const juce::Colour text          { 0xffebeff5 };
-    const juce::Colour textDim       { 0xff7f8793 };
-    const juce::Colour textFaint     { 0xff6b727e };
+    // Pills (preset/user-preset/tab/save buttons).
+    const juce::Colour pillBorder       { 0xb22d333d };
+    const juce::Colour pillActiveBg     { 0x29f5ae39 };
+    const juce::Colour pillInactiveUserBg { 0x08ffffff };
+    const juce::Colour saveInputBg      { 0x0affffff };
+    const juce::Colour saveConfirmBorder{ 0xff5bbd74 };
+    const juce::Colour saveConfirmBg    { 0x2e5bbd74 };
 
-    const juce::Colour knobTrack     { 0xff2a2e36 };
-    const juce::Colour dotUnlit      { 0xff2f333b };
+    // Text.
+    const juce::Colour text             { 0xffebeff5 }; // "hi" - wordmark, active pill text
+    const juce::Colour textKnobLabel    { 0xffe4e8ef }; // card labels (PITCH, ROOT, ...)
+    const juce::Colour textValue        { 0xffcaced4 }; // card value readouts
+    const juce::Colour textDim          { 0xff7f8793 }; // captions, tagline, macro values
+    const juce::Colour textFaint        { 0xff79818d }; // delete/copy/cancel/save-open text
+    const juce::Colour textFooter       { 0xff5d646f }; // footer strip text
+    const juce::Colour macroLabel       { 0xffb4b8be };
 
-    // Warm amber/dusk glow behind the title banner, and the logo's gold.
-    const juce::Colour glowCore      { 0xfffdc436 };
-    const juce::Colour glowMid       { 0xfff5ae39 };
-    const juce::Colour glowFar       { 0x29f5ae39 };
+    const juce::Colour dividerColor     { 0x80282e38 };
+
+    const juce::Colour knobTrack        { 0xff2a2e36 }; // unlit portion of a ring knob
+    const juce::Colour knobInner        { 0xff12161d }; // ring knob's dark cap
+    const juce::Colour dotUnlit         { 0xff2f333b }; // layer status dot when silent
+
+    const juce::Colour logoMountain     { 0xff080b12 };
+    const juce::Colour logoGold         { 0xfff0bb3b };
+    const juce::Colour wordmarkGoldEnd  { 0xffeabb79 };
+
+    const juce::Colour gold             { 0xfff5ae39 }; // the one warm accent: active borders/text, wheel thumbs
+    const juce::Colour thumbGlow        { 0x80f5ae39 };
 
     // Per-pad accents, in LayerIndex order: Root, Clearing, Expanse, Bloom.
     const juce::Colour layerAccents[] {
@@ -74,21 +98,37 @@ inline juce::Font labelFont (float height, bool bold = false)
                            .withStyle (bold ? "Bold" : "Regular"));
 }
 
-/** The serif italic "Horizon Pad" wordmark font. */
+/** The serif italic "Horizon Pad" wordmark font (the design specifies
+    Newsreader italic; JUCE's generic serif placeholder - resolved to
+    whatever serif the host OS actually has - is used rather than naming a
+    specific family like "Georgia": asking for a named font that happens not
+    to be installed doesn't just look wrong, it has been observed to crash
+    JUCE's text shaper outright on at least one Linux setup, so the generic,
+    always-resolvable placeholder is the safe choice here). */
 inline juce::Font titleFont (float height)
 {
     return juce::Font (juce::FontOptions()
-                           .withName ("Georgia")
+                           .withName (juce::Font::getDefaultSerifFontName())
                            .withHeight (height)
                            .withStyle ("Italic"));
 }
 
 /**
-    Custom LookAndFeel: a thin, flat rotary that matches the mockup - a dark
-    track arc, an accent-coloured value arc, a subtly shaded knob cap and a
-    single pointer line - plus a pill-track vertical slider for the PITCH/MOD
-    wheels. The accent colour is taken from the slider's rotarySliderFillColourId
-    so each knob/wheel can tint itself independently.
+    Custom LookAndFeel: a thin ring-and-dot rotary (matching the design's
+    conic-gradient ringKnob() helper), a flat track-and-pill-thumb vertical
+    slider for the PITCH/MOD wheels, and pill buttons whose border follows a
+    small per-Component::Properties convention so one generic
+    drawButtonBackground can produce every pill style the design uses:
+
+      - by default: pillBorder when off, gold when toggled on;
+      - "noBorder"     (bool)  - draw no border at all (a pill's inner
+                                  sub-buttons, whose *parent* paints the
+                                  shared border - see PresetBar's UserPresetPill);
+      - "dashedBorder" (bool)  - dash the (untoggled) border - the "+ Save
+                                  preset" control;
+      - "borderColour" (int, packed ARGB) - a fixed border colour overriding
+                                  the default/gold choice (e.g. the green
+                                  "Save" confirm button).
 */
 class HorizonLookAndFeel final : public juce::LookAndFeel_V4
 {
@@ -114,6 +154,31 @@ private:
 
 /** Rounded panel with a 1px border, used by preset pills and the header field. */
 void drawPanel (juce::Graphics& g, juce::Rectangle<float> bounds,
-                juce::Colour fill = Palette::panel, float corner = 10.0f);
+                juce::Colour fill = Palette::cardBg, float corner = 10.0f);
+
+/**
+    Paints the one shared panel that is the whole plugin window - gradient
+    fill, border, clipped mountain-skyline silhouette, and the top-right glow
+    - exactly matching the design handoff's panelStyle/skylineStyle/glowStyle.
+    Call once from the editor's paint(), behind every (transparent) child.
+*/
+void drawHorizonPanel (juce::Graphics& g, juce::Rectangle<float> bounds);
+
+/**
+    The fixed vertical slot layout every grid card (PITCH, MOD, ROOT,
+    CLEARING, EXPANSE, BLOOM, MACROS, OUTPUT) shares, matching the design's
+    colCardStyle exactly: 18px/12px padding, then icon row (28px), label
+    (16px), caption (30px), a flexible control area, and a value readout
+    (18px), each separated by a 7px gap.
+*/
+struct ColumnSlots
+{
+    juce::Rectangle<int> icon, label, caption, control, value;
+};
+
+ColumnSlots computeColumnSlots (juce::Rectangle<int> cardBounds);
+
+/** Fills+strokes one grid card's rounded-rect chrome (cardBg/cardBorder, 14px corner). */
+void drawColumnCard (juce::Graphics& g, juce::Rectangle<float> bounds);
 
 } // namespace horizon::ui

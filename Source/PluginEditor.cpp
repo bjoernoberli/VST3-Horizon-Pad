@@ -57,36 +57,55 @@ void HorizonPadAudioProcessorEditor::timerCallback()
 
 void HorizonPadAudioProcessorEditor::paint (juce::Graphics& g)
 {
-    g.fillAll (Palette::background);
+    drawHorizonPanel (g, getLocalBounds().toFloat());
+
+    g.setColour (Palette::dividerColor);
+    g.fillRect (dividerBounds);
 }
 
 void HorizonPadAudioProcessorEditor::resized()
 {
-    auto r = getLocalBounds();
+    auto r = getLocalBounds().reduced (kSidePadding, kTopBottomPadding);
 
-    footerBar.setBounds (r.removeFromBottom (32));
+    titleBanner.setBounds (r.removeFromTop (150));
 
-    titleBanner.setBounds (r.removeFromTop (140));
-    presetBar.setBounds (r.removeFromTop (48).reduced (20, 4));
+    r.removeFromTop (26);
+    dividerBounds = r.removeFromTop (1);
 
-    r.reduce (20, 8);
+    r.removeFromTop (22);
+    presetBar.setBounds (r.removeFromTop (36));
 
-    // Knob row: PITCH and MOD ride the wheels; eight equal-width columns mirror
-    // a Launchkey 25's knob row - four blend the pads (ROOT/CLEARING/EXPANSE/
-    // BLOOM), four shape the tone (the MACROS panel: ATTACK/FILTER/WIDTH/
-    // REVERB) - plus the OUTPUT meter, all the same width, per the design.
+    r.removeFromTop (36);
+
+    // The grid row's height is set by its tallest cards (PITCH/MOD/OUTPUT,
+    // whose 190px vertical tracks/meters dominate), matching the design's
+    // CSS grid (implicit row height = max content) rather than a fixed guess.
+    constexpr int kGridRowHeight = 346;
+    constexpr int kGridGap = 14;
+    auto gridArea = r.removeFromTop (kGridRowHeight);
+
+    // Eight equal-width columns: PITCH and MOD ride the wheels; four blend
+    // the pads (ROOT/CLEARING/EXPANSE/BLOOM); four shape the tone (the
+    // MACROS panel: ATTACK/FILTER/WIDTH/REVERB); OUTPUT is the meter -
+    // mirroring a Launchkey 25's eight knobs, per the design's mainGridStyle.
     juce::Component* columns[] {
         &pitchWheel, &modWheel, &rootKnob, &clearingKnob,
         &expanseKnob, &bloomKnob, &macrosPanel, &outputMeter,
     };
 
-    const auto unitWidth = (float) r.getWidth() / (float) juce::numElementsInArray (columns);
-    auto x = (float) r.getX();
+    const auto numColumns = (float) juce::numElementsInArray (columns);
+    const auto totalGap = kGridGap * (numColumns - 1.0f);
+    const auto colWidth = ((float) gridArea.getWidth() - totalGap) / numColumns;
+
+    auto x = (float) gridArea.getX();
 
     for (auto* c : columns)
     {
-        const auto w = juce::roundToInt (unitWidth);
-        c->setBounds (juce::Rectangle<int> (juce::roundToInt (x), r.getY(), w, r.getHeight()).reduced (6, 0));
-        x += unitWidth;
+        c->setBounds (juce::Rectangle<int> (juce::roundToInt (x), gridArea.getY(),
+                                            juce::roundToInt (colWidth), gridArea.getHeight()));
+        x += colWidth + (float) kGridGap;
     }
+
+    r.removeFromTop (28);
+    footerBar.setBounds (r.removeFromTop (24));
 }
