@@ -9,13 +9,15 @@
 #include "gui/WheelSlider.h"
 #include "gui/MacrosPanel.h"
 #include "gui/OutputMeter.h"
-#include "gui/OnScreenKeyboard.h"
 #include "gui/FooterBar.h"
 
 /**
     The editor: title banner, preset row, a single knob row (PITCH, MOD, the
-    four pad knobs, the macros grid, OUTPUT), the on-screen keyboard, and the
-    footer - matching the Claude Design GUI draft this plugin was built from.
+    four pad knobs, the macros grid, OUTPUT), and the footer - matching the
+    Claude Design GUI draft this plugin was built from. There is no on-screen
+    keyboard: play from a MIDI keyboard/controller, matching a real Launchkey-
+    style workflow (the eight knobs mirror a Launchkey 25's eight knobs, and
+    the wheels mirror its pitch/mod wheels).
 
     A fixed-size window (see kWindowWidth/kWindowHeight): every child paints
     its own precise layout rather than scaling a "design surface", so there is
@@ -48,7 +50,6 @@ private:
     horizon::ui::MacrosPanel macrosPanel;
     horizon::ui::OutputMeter outputMeter;
 
-    horizon::ui::OnScreenKeyboard keyboard;
     horizon::ui::FooterBar footerBar;
 
     JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR (HorizonPadAudioProcessorEditor)

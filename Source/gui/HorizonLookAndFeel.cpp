@@ -56,18 +56,23 @@ void HorizonLookAndFeel::drawRotarySlider (juce::Graphics& g, int x, int y, int 
                                            float sliderPos, float rotaryStartAngle, float rotaryEndAngle,
                                            juce::Slider& slider)
 {
+    // Ring + dot style, matching the design handoff's ringKnob() helper: a
+    // thin dark track ring, an accent-coloured ring lit up to the current
+    // value, a dark cap, and a small glowing dot marking the exact value
+    // position - not a thick glowing filled arc (an earlier iteration of
+    // this look and feel).
     auto bounds = juce::Rectangle<int> (x, y, width, height).toFloat().reduced (2.0f);
     const auto size = juce::jmin (bounds.getWidth(), bounds.getHeight());
     bounds = bounds.withSizeKeepingCentre (size, size);
 
     const auto centre = bounds.getCentre();
-    const auto arcThickness = juce::jmax (2.0f, size * 0.09f);
+    const auto arcThickness = juce::jmax (2.0f, size * 0.07f);
     const auto arcRadius = size * 0.5f - arcThickness * 0.5f;
     const auto angle = rotaryStartAngle + sliderPos * (rotaryEndAngle - rotaryStartAngle);
 
     const auto accent = slider.findColour (juce::Slider::rotarySliderFillColourId);
 
-    // --- Track
+    // --- Track (the full 270 degree sweep, dark).
     {
         juce::Path track;
         track.addCentredArc (centre.x, centre.y, arcRadius, arcRadius, 0.0f,
@@ -77,33 +82,42 @@ void HorizonLookAndFeel::drawRotarySlider (juce::Graphics& g, int x, int y, int 
                                                    juce::PathStrokeType::rounded));
     }
 
-    // --- Value arc, with a soft glow to match the mockup's slightly luminous knobs.
+    // --- Value ring: lit from the start up to the current value, same
+    // thickness as the track (a ring reading as "how full", not a fader).
     if (sliderPos > 0.001f)
     {
         juce::Path value;
         value.addCentredArc (centre.x, centre.y, arcRadius, arcRadius, 0.0f,
                              rotaryStartAngle, angle, true);
 
-        g.setColour (accent.withAlpha (0.35f));
-        g.strokePath (value, juce::PathStrokeType (arcThickness * 1.8f, juce::PathStrokeType::curved,
-                                                   juce::PathStrokeType::rounded));
-
         g.setColour (accent);
         g.strokePath (value, juce::PathStrokeType (arcThickness, juce::PathStrokeType::curved,
                                                    juce::PathStrokeType::rounded));
     }
 
-    // --- Knob cap (dark, mostly empty centre - the mockup's knobs read as
-    // rings, not solid dials).
-    const auto capRadius = arcRadius - arcThickness * 1.3f;
+    // --- Dark cap (mostly empty centre - the design's knobs read as rings,
+    // not solid dials).
+    const auto capRadius = arcRadius - arcThickness * 1.1f;
 
     if (capRadius > 2.0f)
     {
         const auto capBounds = juce::Rectangle<float> (capRadius * 2.0f, capRadius * 2.0f)
                                    .withCentre (centre);
 
-        g.setColour (Palette::background);
+        g.setColour (Palette::panelRaised);
         g.fillEllipse (capBounds);
+    }
+
+    // --- Glowing dot at the current value's position along the ring.
+    {
+        const auto dotCentre = centre.getPointOnCircumference (arcRadius, angle);
+        const auto dotRadius = arcThickness * 0.62f;
+
+        g.setColour (accent.withAlpha (0.30f));
+        g.fillEllipse (juce::Rectangle<float> (dotRadius * 3.2f, dotRadius * 3.2f).withCentre (dotCentre));
+
+        g.setColour (accent);
+        g.fillEllipse (juce::Rectangle<float> (dotRadius * 2.0f, dotRadius * 2.0f).withCentre (dotCentre));
     }
 }
 

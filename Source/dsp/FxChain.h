@@ -24,7 +24,10 @@ namespace horizon
     source), so this is the only place stereo width is created at all.
 
     REVERB (0..1) is the wet send level; 0.28 was the fixed value the sound
-    design was validated against, kept here as the parameter's default.
+    design was validated against, kept here as the parameter's default. The
+    dry level is trimmed down slightly as REVERB rises (0.85 -> ~0.60) so
+    raising the send reads as a wet/dry blend rather than a pure loudness
+    increase - see the comment in process().
 */
 class FxChain
 {

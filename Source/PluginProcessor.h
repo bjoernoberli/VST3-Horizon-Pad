@@ -11,6 +11,7 @@
 #include "dsp/MotionPadLayer.h"
 #include "dsp/FxChain.h"
 #include "presets/Presets.h"
+#include "presets/UserPresetStore.h"
 
 /**
     Horizon Pad - a four-layer ambient pad synthesiser.
@@ -30,11 +31,28 @@
       * Programs are applied on whatever thread the host calls setCurrentProgram
         on; that only touches parameters (thread-safe), then posts a
         ChangeBroadcaster message for the editor.
+
+      * The A/B buffers mirror the mockup's design: an AudioProcessorValueTreeState::
+        Listener callback (parameterChanged(), which can fire from ANY thread -
+        the audio thread during host automation, or the message thread during a
+        GUI edit) keeps the *active* buffer's snapshot in sync with live
+        parameter values, so switching or copying buffers is just atomics.
+
+      * User presets (the "+Save preset" library) are message-thread-only: they
+        are created, deleted and read exclusively from GUI actions and editor
+        polling, so the plain std::vector needs no extra synchronisation - the
+        audio thread never touches it.
 */
 class HorizonPadAudioProcessor final : public juce::AudioProcessor,
-                                       public juce::ChangeBroadcaster
+                                       public juce::ChangeBroadcaster,
+                                       private juce::AudioProcessorValueTreeState::Listener
 {
 public:
+    /** Which preset (if any) the current parameter values were last recalled
+        from - purely for the preset row's highlight, matching the mockup's
+        `activePreset` field. */
+    enum class PresetKind { none, factory, user };
+
     HorizonPadAudioProcessor();
     ~HorizonPadAudioProcessor() override;
 
@@ -69,12 +87,24 @@ public:
     /** For the on-screen PITCH/MOD wheels (mouse-dragged, not host-automated). */
     horizon::PerformanceState& getPerformanceState() noexcept { return performanceState; }
 
-    /** For the on-screen A-K keyboard: the standard JUCE mechanism for a GUI
-        to trigger notes without touching audio-thread voice state directly. */
-    juce::MidiKeyboardState& getKeyboardState() noexcept { return keyboardState; }
-
-    /** Convenience for the editor's preset browser. */
+    /** Factory programs (read-only, host-visible via getProgramName/setCurrentProgram). */
     const std::vector<horizon::Preset>& getPresets() const { return horizon::getFactoryPresets(); }
+
+    /** User-saved presets (the "+Save preset" library) - global, shared across
+        every instance via a small file on disk, not part of the host's own
+        program list. */
+    const std::vector<horizon::UserPreset>& getUserPresets() const noexcept { return userPresets; }
+    void saveCurrentAsUserPreset (const juce::String& name);
+    void deleteUserPreset (int index);
+    void applyUserPreset (int index);
+
+    PresetKind getActivePresetKind() const noexcept { return (PresetKind) activePresetKind.load (std::memory_order_relaxed); }
+    int getActivePresetIndex() const noexcept { return activePresetIndex.load (std::memory_order_relaxed); }
+
+    /** A/B buffers: two independent snapshots of all 8 parameters. */
+    int getActiveBufferIndex() const noexcept { return activeBufferIndex.load (std::memory_order_relaxed); }
+    void switchBuffer (int index);
+    void copyActiveBufferToOtherBuffer();
 
     /** RMS of the last processed block, for the editor's live meter. 0..1. */
     float getOutputLevel() const noexcept { return outputLevel.load (std::memory_order_relaxed); }
@@ -89,6 +119,7 @@ private:
     void noteOff (int midiNote);
     void allNotesOff (bool immediately);
     int findFreeVoiceSlot();
+    void parameterChanged (const juce::String& parameterID, float newValue) override;
 
     juce::AudioProcessorValueTreeState apvts;
 
@@ -97,7 +128,6 @@ private:
     std::array<std::atomic<float>*, (size_t) horizon::kNumGlobalParams> macroParams {};
 
     horizon::PerformanceState performanceState;
-    juce::MidiKeyboardState keyboardState;
 
     horizon::WarmFoundationLayer warmFoundation;
     horizon::AnalogEnsembleLayer analogEnsemble;
@@ -122,6 +152,23 @@ private:
 
     std::atomic<int> currentProgram { 0 };
     std::atomic<float> outputLevel { 0.0f };
+
+    // --- A/B buffers: see the class-level thread-safety note above.
+    struct BufferSnapshot
+    {
+        std::array<std::atomic<float>, (size_t) horizon::kNumLayers> vols;
+        std::array<std::atomic<float>, (size_t) horizon::kNumGlobalParams> macros;
+    };
+
+    std::array<BufferSnapshot, 2> buffers; // 0 = A, 1 = B
+    std::atomic<int> activeBufferIndex { 0 };
+
+    // --- Preset row highlight state (factory or user, or none once buffers diverge).
+    std::atomic<int> activePresetKind { (int) PresetKind::factory };
+    std::atomic<int> activePresetIndex { 0 };
+
+    // --- User preset library (message-thread only - see class-level note).
+    std::vector<horizon::UserPreset> userPresets;
 
     JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR (HorizonPadAudioProcessor)
 };

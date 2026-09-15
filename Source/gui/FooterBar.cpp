@@ -1,11 +1,18 @@
 #include "FooterBar.h"
+#include "../PluginProcessor.h"
 
 namespace horizon::ui
 {
 
-FooterBar::FooterBar()
+FooterBar::FooterBar (HorizonPadAudioProcessor& processorToUse)
+    : processor (processorToUse)
 {
     setInterceptsMouseClicks (false, false);
+}
+
+void FooterBar::refreshFromProcessor()
+{
+    repaint();
 }
 
 void FooterBar::resized()
@@ -66,7 +73,9 @@ void FooterBar::paint (juce::Graphics& g)
     g.drawText ("HORIZON PAD " + juce::String::fromUTF8 ("\xc2\xb7") + " VST3",
                r, juce::Justification::centredLeft);
 
-    g.drawText ("BUFFER A " + juce::String::fromUTF8 ("\xc2\xb7") + " 4 LAYERS "
+    const auto bufferLetter = processor.getActiveBufferIndex() == 0 ? "A" : "B";
+
+    g.drawText (juce::String ("BUFFER ") + bufferLetter + " " + juce::String::fromUTF8 ("\xc2\xb7") + " 4 LAYERS "
                + juce::String::fromUTF8 ("\xc2\xb7") + " 8 MACROS",
                r, juce::Justification::centredRight);
 }

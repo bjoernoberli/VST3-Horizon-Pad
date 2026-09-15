@@ -32,7 +32,7 @@ void OutputMeter::paint (juce::Graphics& g)
 
     // --- meter track
     auto track = r.reduced (getWidth() / 2 - 8, 4).toFloat();
-    g.setColour (Palette::knobTrack);
+    g.setColour (Palette::meterBg);
     g.fillRoundedRectangle (track, 8.0f);
 
     auto fill = track;
@@ -40,8 +40,8 @@ void OutputMeter::paint (juce::Graphics& g)
 
     if (fill.getHeight() > 0.5f)
     {
-        juce::ColourGradient grad (Palette::layerAccents[0], fill.getX(), fill.getBottom(),
-                                   Palette::layerAccents[1], fill.getX(), fill.getY(), false);
+        juce::ColourGradient grad (Palette::meterFillLow, fill.getX(), fill.getBottom(),
+                                   Palette::meterFillHigh, fill.getX(), fill.getY(), false);
         g.setGradientFill (grad);
         g.fillRoundedRectangle (fill, 8.0f);
     }

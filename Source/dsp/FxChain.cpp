@@ -82,12 +82,21 @@ void FxChain::process (juce::AudioBuffer<float>& buffer, int numSamples)
         const auto reverbSend = smoothedReverbSend.getNextValue();
         const auto wetSample = wet[n] * reverbSend;
 
+        // Turning REVERB up adds a decorrelated tail on top of the dry
+        // signal, which raises total output energy if the dry path stays at
+        // a fixed level - that's the "reverb makes it louder" complaint. Trim
+        // dry down a little as the send rises (0.85 at 0%, ~0.60 at 100%) so
+        // the knob reads as a wet/dry blend rather than a pure add; at
+        // REVERB=0 this is exactly the original fixed 0.85 trim, so the
+        // un-reverbed sound is unchanged.
+        const auto dryLevel = 0.85f * (1.0f - 0.3f * reverbSend);
+
         widthDelay.pushSample (0, dry[n]);
         widthDelay.setDelay (widthSamples);
         const auto delayed = widthDelay.popSample (0);
 
-        left[n]  = dry[n]  * 0.85f + wetSample;
-        right[n] = delayed * 0.85f + wetSample;
+        left[n]  = dry[n]  * dryLevel + wetSample;
+        right[n] = delayed * dryLevel + wetSample;
     }
 }
 

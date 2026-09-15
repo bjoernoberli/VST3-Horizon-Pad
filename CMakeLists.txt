@@ -69,6 +69,7 @@ target_sources(HorizonPad PRIVATE
     Source/dsp/FxChain.cpp
 
     Source/presets/Presets.cpp
+    Source/presets/UserPresetStore.cpp
 
     Source/gui/HorizonLookAndFeel.cpp
     Source/gui/TitleBanner.cpp
@@ -77,7 +78,6 @@ target_sources(HorizonPad PRIVATE
     Source/gui/MacrosPanel.cpp
     Source/gui/WheelSlider.cpp
     Source/gui/OutputMeter.cpp
-    Source/gui/OnScreenKeyboard.cpp
     Source/gui/FooterBar.cpp)
 
 target_include_directories(HorizonPad PRIVATE Source)

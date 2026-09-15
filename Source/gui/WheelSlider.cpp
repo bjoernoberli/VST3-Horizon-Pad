@@ -38,6 +38,12 @@ WheelSlider::WheelSlider (HorizonPadAudioProcessor& processorToUse, Kind kindToU
         repaint();
     };
 
+    // PITCH is a spring-loaded wheel, like a real keyboard's: it snaps back to
+    // centre (0 semitones) the moment you let go, matching the reference
+    // design's onPointerUp behaviour. MOD stays wherever it's left.
+    if (kind == Kind::pitch)
+        slider.onDragEnd = [this] { slider.setValue (0.0, juce::sendNotification); };
+
     addAndMakeVisible (slider);
     refreshFromProcessor();
 }

@@ -5,42 +5,65 @@
 namespace horizon::ui
 {
 
-/** The whole plugin's colour vocabulary in one place, matched to the Claude
-    Design GUI draft (dusk/amber ambient theme). */
+/** The whole plugin's colour vocabulary in one place - values are exact
+    conversions (OKLCH -> linear sRGB -> gamma-encoded sRGB, Bjorn Ottosson's
+    OKLab formulas) of the oklch() colours in the authoritative Claude Design
+    handoff ("Horizon Pad.dc.html"), so this is a pixel-accurate palette
+    match, not an approximation. */
 namespace Palette
 {
-    const juce::Colour background    { 0xff0c0a08 };
-    const juce::Colour panel         { 0xff15120e };
-    const juce::Colour panelRaised   { 0xff1c1712 };
-    const juce::Colour panelBorder   { 0xff332a20 };
-    const juce::Colour text          { 0xfff2ede4 };
-    const juce::Colour textDim       { 0xffa39a8c };
-    const juce::Colour textFaint     { 0xff6b6258 };
-    const juce::Colour knobTrack     { 0xff2a241c };
+    const juce::Colour background    { 0xff020306 };
 
-    // Warm amber/dusk glow behind the title banner.
-    const juce::Colour glowCore      { 0xffffb15e };
-    const juce::Colour glowMid       { 0xffb5622f };
-    const juce::Colour glowFar       { 0xff2a1810 };
+    // The shared warm gradient panel behind the whole window (see
+    // TitleBanner/FooterBar), bottom-to-top: near-black -> deep amber.
+    const juce::Colour panelGradientBottom { 0xff05070d };
+    const juce::Colour panelGradientLower  { 0xff060c13 };
+    const juce::Colour panelGradientUpper  { 0xff211300 };
+    const juce::Colour panelGradientTop    { 0xff311e00 };
+
+    const juce::Colour panel         { 0xff10141b }; // card/pill background
+    const juce::Colour panelRaised   { 0xff12161d }; // knob inner cap / raised chrome
+    const juce::Colour panelBorder   { 0x99232933 };
+    const juce::Colour panelShadow   { 0x80010000 };
+
+    const juce::Colour text          { 0xffebeff5 };
+    const juce::Colour textDim       { 0xff7f8793 };
+    const juce::Colour textFaint     { 0xff6b727e };
+
+    const juce::Colour knobTrack     { 0xff2a2e36 };
+    const juce::Colour dotUnlit      { 0xff2f333b };
+
+    // Warm amber/dusk glow behind the title banner, and the logo's gold.
+    const juce::Colour glowCore      { 0xfffdc436 };
+    const juce::Colour glowMid       { 0xfff5ae39 };
+    const juce::Colour glowFar       { 0x29f5ae39 };
 
     // Per-pad accents, in LayerIndex order: Root, Clearing, Expanse, Bloom.
     const juce::Colour layerAccents[] {
-        juce::Colour (0xff4ade80),   // 1. Root (Warm Foundation)     - green,  "life grows"
-        juce::Colour (0xfff5a623),   // 2. Clearing (Analog Ensemble) - amber,  "light breaks in"
-        juce::Colour (0xff38bdf8),   // 3. Expanse (Airy Choir)       - blue,   "life opens up"
-        juce::Colour (0xffec4899)    // 4. Bloom (Motion Pad)         - pink,   "life blooms"
+        juce::Colour (0xff5bbd74),   // 1. Root (Warm Foundation)     - green,  "life grows"
+        juce::Colour (0xfff0bb3b),   // 2. Clearing (Analog Ensemble) - amber,  "light breaks in"
+        juce::Colour (0xff2fb5d8),   // 3. Expanse (Airy Choir)       - blue,   "life opens up"
+        juce::Colour (0xffed76b3)    // 4. Bloom (Motion Pad)         - pink,   "life blooms"
     };
 
-    // Macro accents: Attack, Filter, Width, Reverb.
+    // Macro accents: Attack, Filter, Width, Reverb - taking the design's four
+    // macro-slot colours in order (its fourth slot is labelled DRIVE there;
+    // WIDTH occupies it here instead, a considered, already-approved swap -
+    // see FxChain's doc comment for why WIDTH replaced a distortion stage).
     const juce::Colour macroAccents[] {
-        juce::Colour (0xfff5a623),   // Attack - orange
-        juce::Colour (0xff2dd4bf),   // Filter - teal
-        juce::Colour (0xffa78bfa),   // Width  - purple
-        juce::Colour (0xff86efac)    // Reverb - soft green
+        juce::Colour (0xfff5ae39),   // Attack - gold
+        juce::Colour (0xff2fb5d8),   // Filter - blue
+        juce::Colour (0xffed76b3),   // Width  - pink
+        juce::Colour (0xff5bbd74)    // Reverb - green
     };
 
     // Pitch / mod wheels share one neutral performance-control accent.
-    const juce::Colour wheelAccent   { 0xfff5a623 };
+    const juce::Colour wheelAccent   { 0xfff5ae39 };
+
+    // Output meter.
+    const juce::Colour meterBg       { 0xff040609 };
+    const juce::Colour meterFillLow  { 0xffb37903 };
+    const juce::Colour meterFillHigh { 0xfffac547 };
 }
 
 /** Shared typography helper; keeps every label on the same handful of type sizes. */

@@ -18,7 +18,7 @@ HorizonPadAudioProcessorEditor::HorizonPadAudioProcessorEditor (HorizonPadAudioP
                 "BLOOM", "life blooms", horizon::ParamID::bloomVolume),
       macrosPanel (processorToUse),
       outputMeter (processorToUse),
-      keyboard (processorToUse)
+      footerBar (processorToUse)
 {
     setLookAndFeel (&lookAndFeel);
 
@@ -32,7 +32,6 @@ HorizonPadAudioProcessorEditor::HorizonPadAudioProcessorEditor (HorizonPadAudioP
     addAndMakeVisible (bloomKnob);
     addAndMakeVisible (macrosPanel);
     addAndMakeVisible (outputMeter);
-    addAndMakeVisible (keyboard);
     addAndMakeVisible (footerBar);
 
     setResizable (false, false);
@@ -53,7 +52,7 @@ void HorizonPadAudioProcessorEditor::timerCallback()
     pitchWheel.refreshFromProcessor();
     modWheel.refreshFromProcessor();
     outputMeter.refreshFromProcessor();
-    keyboard.pollComputerKeyboard();
+    footerBar.refreshFromProcessor();
 }
 
 void HorizonPadAudioProcessorEditor::paint (juce::Graphics& g)
@@ -66,37 +65,28 @@ void HorizonPadAudioProcessorEditor::resized()
     auto r = getLocalBounds();
 
     footerBar.setBounds (r.removeFromBottom (32));
-    keyboard.setBounds (r.removeFromBottom (140).reduced (24, 8));
 
     titleBanner.setBounds (r.removeFromTop (140));
     presetBar.setBounds (r.removeFromTop (48).reduced (20, 4));
 
     r.reduce (20, 8);
 
-    // Knob row: PITCH, MOD, ROOT, CLEARING, EXPANSE, BLOOM, MACROS (wider), OUTPUT.
-    struct Column { juce::Component* component; float weight; };
-    const Column columns[] {
-        { &pitchWheel,    1.0f },
-        { &modWheel,      1.0f },
-        { &rootKnob,      1.0f },
-        { &clearingKnob,  1.0f },
-        { &expanseKnob,   1.0f },
-        { &bloomKnob,     1.0f },
-        { &macrosPanel,   1.8f },
-        { &outputMeter,   1.0f },
+    // Knob row: PITCH and MOD ride the wheels; eight equal-width columns mirror
+    // a Launchkey 25's knob row - four blend the pads (ROOT/CLEARING/EXPANSE/
+    // BLOOM), four shape the tone (the MACROS panel: ATTACK/FILTER/WIDTH/
+    // REVERB) - plus the OUTPUT meter, all the same width, per the design.
+    juce::Component* columns[] {
+        &pitchWheel, &modWheel, &rootKnob, &clearingKnob,
+        &expanseKnob, &bloomKnob, &macrosPanel, &outputMeter,
     };
 
-    float totalWeight = 0.0f;
-    for (auto& c : columns)
-        totalWeight += c.weight;
-
-    const auto unitWidth = (float) r.getWidth() / totalWeight;
+    const auto unitWidth = (float) r.getWidth() / (float) juce::numElementsInArray (columns);
     auto x = (float) r.getX();
 
-    for (auto& c : columns)
+    for (auto* c : columns)
     {
-        const auto w = juce::roundToInt (c.weight * unitWidth);
-        c.component->setBounds (juce::Rectangle<int> (juce::roundToInt (x), r.getY(), w, r.getHeight()).reduced (6, 0));
-        x += (float) w;
+        const auto w = juce::roundToInt (unitWidth);
+        c->setBounds (juce::Rectangle<int> (juce::roundToInt (x), r.getY(), w, r.getHeight()).reduced (6, 0));
+        x += unitWidth;
     }
 }

@@ -13,8 +13,10 @@ PadKnob::PadKnob (HorizonPadAudioProcessor& processorToUse, int layerIndex,
 {
     slider.setColour (juce::Slider::rotarySliderFillColourId, accent);
     slider.setColour (juce::Slider::rotarySliderOutlineColourId, Palette::knobTrack);
-    slider.setRotaryParameters (juce::MathConstants<float>::pi * 1.22f,
-                                juce::MathConstants<float>::pi * 2.78f,
+    // -135deg..+135deg (a 270deg sweep with a 90deg gap centred at the
+    // bottom), matching the design handoff's ringKnob() geometry exactly.
+    slider.setRotaryParameters (juce::MathConstants<float>::pi * 1.25f,
+                                juce::MathConstants<float>::pi * 2.75f,
                                 true);
     addAndMakeVisible (slider);
 

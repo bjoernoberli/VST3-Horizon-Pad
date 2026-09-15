@@ -10,8 +10,10 @@ void MacrosPanel::setUpKnob (Knob& knob, const juce::String& caption, const char
     knob.caption = caption;
     knob.slider.setColour (juce::Slider::rotarySliderFillColourId, accent);
     knob.slider.setColour (juce::Slider::rotarySliderOutlineColourId, Palette::knobTrack);
-    knob.slider.setRotaryParameters (juce::MathConstants<float>::pi * 1.22f,
-                                     juce::MathConstants<float>::pi * 2.78f,
+    // -135deg..+135deg (a 270deg sweep with a 90deg gap centred at the
+    // bottom), matching the design handoff's ringKnob() geometry exactly.
+    knob.slider.setRotaryParameters (juce::MathConstants<float>::pi * 1.25f,
+                                     juce::MathConstants<float>::pi * 2.75f,
                                      true);
     addAndMakeVisible (knob.slider);
 
