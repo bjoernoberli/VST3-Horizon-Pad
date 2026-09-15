@@ -43,7 +43,10 @@ public:
 
         constexpr float ratio = 2.0f; // fixed +1 octave
 
-        auto readGrain = [this] (int age) noexcept
+        // MSVC (unlike GCC/Clang) requires an explicit capture for a local
+        // constexpr used inside a nested lambda even though it's never
+        // odr-used - capture by value rather than relying on implicit access.
+        auto readGrain = [this, ratio] (int age) noexcept
         {
             const auto readPosF = (float) writePos - (float) age * ratio;
             auto i0 = (int) std::floor (readPosF);
