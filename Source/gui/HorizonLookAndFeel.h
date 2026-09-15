@@ -5,37 +5,45 @@
 namespace horizon::ui
 {
 
-/** The whole plugin's colour vocabulary in one place. */
+/** The whole plugin's colour vocabulary in one place, matched to the Claude
+    Design GUI draft (dusk/amber ambient theme). */
 namespace Palette
 {
-    const juce::Colour background    { 0xff0e1320 };
-    const juce::Colour panel         { 0xff161d2e };
-    const juce::Colour panelRaised   { 0xff1c2437 };
-    const juce::Colour panelBorder   { 0xff28324a };
-    const juce::Colour text          { 0xffe8edf7 };
-    const juce::Colour textDim       { 0xff8a96ae };
-    const juce::Colour textFaint     { 0xff5d6880 };
-    const juce::Colour knobTrack     { 0xff2b3450 };
+    const juce::Colour background    { 0xff0c0a08 };
+    const juce::Colour panel         { 0xff15120e };
+    const juce::Colour panelRaised   { 0xff1c1712 };
+    const juce::Colour panelBorder   { 0xff332a20 };
+    const juce::Colour text          { 0xfff2ede4 };
+    const juce::Colour textDim       { 0xffa39a8c };
+    const juce::Colour textFaint     { 0xff6b6258 };
+    const juce::Colour knobTrack     { 0xff2a241c };
 
-    // Sunset banner ramp, bottom (horizon) to top (dusk sky).
-    const juce::Colour sunsetGlow    { 0xffffd08a };
-    const juce::Colour sunsetCore    { 0xfff59a45 };
-    const juce::Colour sunsetMid     { 0xffc55a6b };
-    const juce::Colour duskUpper     { 0xff4a4a7d };
-    const juce::Colour duskTop       { 0xff232a4a };
-    const juce::Colour mountainNear  { 0xff141a2b };
-    const juce::Colour mountainFar   { 0xff2e3354 };
+    // Warm amber/dusk glow behind the title banner.
+    const juce::Colour glowCore      { 0xffffb15e };
+    const juce::Colour glowMid       { 0xffb5622f };
+    const juce::Colour glowFar       { 0xff2a1810 };
 
-    // Per-layer accents, in LayerIndex order.
+    // Per-pad accents, in LayerIndex order: Root, Clearing, Expanse, Bloom.
     const juce::Colour layerAccents[] {
-        juce::Colour (0xfff2913d),   // 1. Warm Pad       - orange
-        juce::Colour (0xff5b9bd5),   // 2. Analog Strings - blue
-        juce::Colour (0xff57be8e),   // 3. Granular       - green
-        juce::Colour (0xffa483e0)    // 4. Sub Pad        - purple
+        juce::Colour (0xff4ade80),   // 1. Root (Warm Foundation)     - green,  "life grows"
+        juce::Colour (0xfff5a623),   // 2. Clearing (Analog Ensemble) - amber,  "light breaks in"
+        juce::Colour (0xff38bdf8),   // 3. Expanse (Airy Choir)       - blue,   "life opens up"
+        juce::Colour (0xffec4899)    // 4. Bloom (Motion Pad)         - pink,   "life blooms"
     };
+
+    // Macro accents: Attack, Filter, Width, Reverb.
+    const juce::Colour macroAccents[] {
+        juce::Colour (0xfff5a623),   // Attack - orange
+        juce::Colour (0xff2dd4bf),   // Filter - teal
+        juce::Colour (0xffa78bfa),   // Width  - purple
+        juce::Colour (0xff86efac)    // Reverb - soft green
+    };
+
+    // Pitch / mod wheels share one neutral performance-control accent.
+    const juce::Colour wheelAccent   { 0xfff5a623 };
 }
 
-/** Shared typography helper; keeps every label on the same two type sizes. */
+/** Shared typography helper; keeps every label on the same handful of type sizes. */
 inline juce::Font labelFont (float height, bool bold = false)
 {
     return juce::Font (juce::FontOptions()
@@ -43,11 +51,21 @@ inline juce::Font labelFont (float height, bool bold = false)
                            .withStyle (bold ? "Bold" : "Regular"));
 }
 
+/** The serif italic "Horizon Pad" wordmark font. */
+inline juce::Font titleFont (float height)
+{
+    return juce::Font (juce::FontOptions()
+                           .withName ("Georgia")
+                           .withHeight (height)
+                           .withStyle ("Italic"));
+}
+
 /**
     Custom LookAndFeel: a thin, flat rotary that matches the mockup - a dark
     track arc, an accent-coloured value arc, a subtly shaded knob cap and a
-    single pointer line. The accent colour is taken from the slider's
-    rotarySliderFillColourId so each layer panel can tint its own knobs.
+    single pointer line - plus a pill-track vertical slider for the PITCH/MOD
+    wheels. The accent colour is taken from the slider's rotarySliderFillColourId
+    so each knob/wheel can tint itself independently.
 */
 class HorizonLookAndFeel final : public juce::LookAndFeel_V4
 {
@@ -58,6 +76,10 @@ public:
                            float sliderPosProportional, float rotaryStartAngle,
                            float rotaryEndAngle, juce::Slider&) override;
 
+    void drawLinearSlider (juce::Graphics&, int x, int y, int width, int height,
+                           float sliderPos, float minSliderPos, float maxSliderPos,
+                           const juce::Slider::SliderStyle style, juce::Slider&) override;
+
     juce::Font getLabelFont (juce::Label&) override;
     void drawButtonBackground (juce::Graphics&, juce::Button&, const juce::Colour& backgroundColour,
                                bool shouldDrawButtonAsHighlighted, bool shouldDrawButtonAsDown) override;
@@ -67,7 +89,7 @@ private:
     JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR (HorizonLookAndFeel)
 };
 
-/** Rounded panel with a 1px border, used by every panel in the layout. */
+/** Rounded panel with a 1px border, used by preset pills and the header field. */
 void drawPanel (juce::Graphics& g, juce::Rectangle<float> bounds,
                 juce::Colour fill = Palette::panel, float corner = 10.0f);
 

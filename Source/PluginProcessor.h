@@ -2,12 +2,13 @@
 
 #include <JuceHeader.h>
 
-#include "dsp/ToneState.h"
+#include "dsp/HorizonTypes.h"
+#include "dsp/PerformanceState.h"
 #include "dsp/LayerBase.h"
-#include "dsp/WarmPadLayer.h"
-#include "dsp/AnalogStringsLayer.h"
-#include "dsp/GranularTextureLayer.h"
-#include "dsp/SubPadLayer.h"
+#include "dsp/WarmFoundationLayer.h"
+#include "dsp/AnalogEnsembleLayer.h"
+#include "dsp/AiryChoirLayer.h"
+#include "dsp/MotionPadLayer.h"
 #include "dsp/FxChain.h"
 #include "presets/Presets.h"
 
@@ -16,19 +17,19 @@
 
     Thread-safety model
     -------------------
-      * The eight host-automatable parameters live in an
-        AudioProcessorValueTreeState; the audio thread reads them through cached
-        std::atomic<float>* pointers and smooths them per block.
+      * The eight host-automatable parameters (four pad volumes, four macros)
+        live in an AudioProcessorValueTreeState; the audio thread reads them
+        through cached std::atomic<float>* pointers and applies them per block.
 
-      * The non-automated tone block lives in horizon::AtomicToneState, a
-        lock-free array of std::atomic<float> guarded by a generation counter.
-        The UI and preset loading write it; the audio thread polls the counter
-        once per block. There is no shared mutable struct and no lock anywhere
-        on the audio path.
+      * PITCH and MOD are performance controls, not host parameters (matching
+        a real keyboard's wheels): horizon::PerformanceState holds them as two
+        independent atomics, written by either incoming MIDI or the on-screen
+        wheel being dragged, and read once per block by the audio thread. No
+        lock anywhere on the audio path.
 
       * Programs are applied on whatever thread the host calls setCurrentProgram
-        on; that only touches parameters (thread-safe) and the atomic tone block,
-        then posts a ChangeBroadcaster message for the editor.
+        on; that only touches parameters (thread-safe), then posts a
+        ChangeBroadcaster message for the editor.
 */
 class HorizonPadAudioProcessor final : public juce::AudioProcessor,
                                        public juce::ChangeBroadcaster
@@ -51,7 +52,7 @@ public:
     bool acceptsMidi() const override { return true; }
     bool producesMidi() const override { return false; }
     bool isMidiEffect() const override { return false; }
-    double getTailLengthSeconds() const override { return 14.0; }
+    double getTailLengthSeconds() const override { return 8.0; }
 
     int getNumPrograms() override;
     int getCurrentProgram() override;
@@ -65,19 +66,17 @@ public:
     // --- Horizon Pad --------------------------------------------------------
     juce::AudioProcessorValueTreeState& getAPVTS() noexcept { return apvts; }
 
-    /** Reads a single tone-block value (message thread; safe from anywhere). */
-    float getToneValue (int layer, int field) const noexcept
-    {
-        return toneState.loadValue (layer, field);
-    }
+    /** For the on-screen PITCH/MOD wheels (mouse-dragged, not host-automated). */
+    horizon::PerformanceState& getPerformanceState() noexcept { return performanceState; }
 
-    /** Writes a single tone-block value from the UI. Lock-free. */
-    void setToneValue (int layer, int field, float value);
+    /** For the on-screen A-K keyboard: the standard JUCE mechanism for a GUI
+        to trigger notes without touching audio-thread voice state directly. */
+    juce::MidiKeyboardState& getKeyboardState() noexcept { return keyboardState; }
 
     /** Convenience for the editor's preset browser. */
     const std::vector<horizon::Preset>& getPresets() const { return horizon::getFactoryPresets(); }
 
-    /** RMS of the last processed block, for the editor's live curves. 0..1. */
+    /** RMS of the last processed block, for the editor's live meter. 0..1. */
     float getOutputLevel() const noexcept { return outputLevel.load (std::memory_order_relaxed); }
 
 private:
@@ -95,15 +94,15 @@ private:
 
     // Cached raw parameter pointers: no string lookups on the audio thread.
     std::array<std::atomic<float>*, (size_t) horizon::kNumLayers> volumeParams {};
-    std::array<std::atomic<float>*, (size_t) horizon::kNumGlobalParams> globalParams {};
+    std::array<std::atomic<float>*, (size_t) horizon::kNumGlobalParams> macroParams {};
 
-    horizon::AtomicToneState toneState;
-    juce::uint32 lastToneGeneration = 0;
+    horizon::PerformanceState performanceState;
+    juce::MidiKeyboardState keyboardState;
 
-    horizon::WarmPadLayer warmPad;
-    horizon::AnalogStringsLayer analogStrings;
-    horizon::GranularTextureLayer granular;
-    horizon::SubPadLayer subPad;
+    horizon::WarmFoundationLayer warmFoundation;
+    horizon::AnalogEnsembleLayer analogEnsemble;
+    horizon::AiryChoirLayer airyChoir;
+    horizon::MotionPadLayer motionPad;
     std::array<horizon::LayerBase*, (size_t) horizon::kNumLayers> layers {};
 
     horizon::FxChain fxChain;

@@ -1,49 +1,42 @@
 #include "PluginEditor.h"
 
-using namespace horizon;
 using namespace horizon::ui;
 
-HorizonPadAudioProcessorEditor::HorizonPadAudioProcessorEditor (HorizonPadAudioProcessor& p)
-    : juce::AudioProcessorEditor (&p),
-      processor (p),
-      pitchGraph ("PITCH", "-24", "+24", Palette::layerAccents[0], GraphView::Style::bipolar),
-      modGraph   ("MOD",   "0.0", "1.0", Palette::layerAccents[2], GraphView::Style::unipolar),
-      globalPanel (p),
-      presetBrowser (p)
+HorizonPadAudioProcessorEditor::HorizonPadAudioProcessorEditor (HorizonPadAudioProcessor& processorToUse)
+    : AudioProcessorEditor (processorToUse),
+      processor (processorToUse),
+      presetBar (processorToUse),
+      pitchWheel (processorToUse, WheelSlider::Kind::pitch),
+      modWheel (processorToUse, WheelSlider::Kind::mod),
+      rootKnob (processorToUse, (int) horizon::LayerIndex::warmFoundation,
+               "ROOT", "life grows", horizon::ParamID::rootVolume),
+      clearingKnob (processorToUse, (int) horizon::LayerIndex::analogEnsemble,
+                   "CLEARING", "light breaks in", horizon::ParamID::clearingVolume),
+      expanseKnob (processorToUse, (int) horizon::LayerIndex::airyChoir,
+                  "EXPANSE", "life opens up", horizon::ParamID::expanseVolume),
+      bloomKnob (processorToUse, (int) horizon::LayerIndex::motionPad,
+                "BLOOM", "life blooms", horizon::ParamID::bloomVolume),
+      macrosPanel (processorToUse),
+      outputMeter (processorToUse),
+      keyboard (processorToUse)
 {
     setLookAndFeel (&lookAndFeel);
 
-    addAndMakeVisible (content);
-    content.addAndMakeVisible (headerBar);
-    content.addAndMakeVisible (banner);
+    addAndMakeVisible (titleBanner);
+    addAndMakeVisible (presetBar);
+    addAndMakeVisible (pitchWheel);
+    addAndMakeVisible (modWheel);
+    addAndMakeVisible (rootKnob);
+    addAndMakeVisible (clearingKnob);
+    addAndMakeVisible (expanseKnob);
+    addAndMakeVisible (bloomKnob);
+    addAndMakeVisible (macrosPanel);
+    addAndMakeVisible (outputMeter);
+    addAndMakeVisible (keyboard);
+    addAndMakeVisible (footerBar);
 
-    const char* const layerNames[] { "WARM PAD", "ANALOG STRINGS", "GRANULAR TEXTURE", "SUB PAD" };
-
-    for (int i = 0; i < kNumLayers; ++i)
-    {
-        auto* panel = layerPanels.add (new LayerPanel (processor, i, layerNames[i]));
-        content.addAndMakeVisible (panel);
-    }
-
-    content.addAndMakeVisible (pitchGraph);
-    content.addAndMakeVisible (modGraph);
-    content.addAndMakeVisible (globalPanel);
-    content.addAndMakeVisible (presetBrowser);
-
-    headerBar.onPreviousPreset = [this] { presetBrowser.selectRelative (-1); };
-    headerBar.onNextPreset     = [this] { presetBrowser.selectRelative (1); };
-
-    processor.addChangeListener (this);
-    refreshFromProcessor();
-
-    setResizable (true, true);
-    setResizeLimits (kDesignWidth * 3 / 4, kDesignHeight * 3 / 4,
-                     kDesignWidth * 3 / 2, kDesignHeight * 3 / 2);
-
-    if (auto* boundsConstrainer = getConstrainer())
-        boundsConstrainer->setFixedAspectRatio ((double) kDesignWidth / (double) kDesignHeight);
-
-    setSize (kDesignWidth, kDesignHeight);
+    setResizable (false, false);
+    setSize (kWindowWidth, kWindowHeight);
 
     startTimerHz (15);
 }
@@ -51,29 +44,16 @@ HorizonPadAudioProcessorEditor::HorizonPadAudioProcessorEditor (HorizonPadAudioP
 HorizonPadAudioProcessorEditor::~HorizonPadAudioProcessorEditor()
 {
     stopTimer();
-    processor.removeChangeListener (this);
     setLookAndFeel (nullptr);
-}
-
-void HorizonPadAudioProcessorEditor::changeListenerCallback (juce::ChangeBroadcaster*)
-{
-    refreshFromProcessor();
-}
-
-void HorizonPadAudioProcessorEditor::refreshFromProcessor()
-{
-    presetBrowser.refreshFromProcessor();
-    headerBar.setPresetName (processor.getProgramName (processor.getCurrentProgram()));
-
-    for (auto* panel : layerPanels)
-        panel->refreshFromProcessor();
 }
 
 void HorizonPadAudioProcessorEditor::timerCallback()
 {
-    const auto level = processor.getOutputLevel();
-    pitchGraph.setActivityLevel (level);
-    modGraph.setActivityLevel (level);
+    presetBar.refreshFromProcessor();
+    pitchWheel.refreshFromProcessor();
+    modWheel.refreshFromProcessor();
+    outputMeter.refreshFromProcessor();
+    keyboard.pollComputerKeyboard();
 }
 
 void HorizonPadAudioProcessorEditor::paint (juce::Graphics& g)
@@ -83,58 +63,40 @@ void HorizonPadAudioProcessorEditor::paint (juce::Graphics& g)
 
 void HorizonPadAudioProcessorEditor::resized()
 {
-    // Scale the fixed design surface to whatever size the host gave us.
-    content.setBounds (0, 0, kDesignWidth, kDesignHeight);
-    content.setTransform (juce::AffineTransform::scale ((float) getWidth() / (float) kDesignWidth,
-                                                        (float) getHeight() / (float) kDesignHeight));
+    auto r = getLocalBounds();
 
-    auto r = juce::Rectangle<int> (0, 0, kDesignWidth, kDesignHeight);
+    footerBar.setBounds (r.removeFromBottom (32));
+    keyboard.setBounds (r.removeFromBottom (140).reduced (24, 8));
 
-    headerBar.setBounds (r.removeFromTop (58));
+    titleBanner.setBounds (r.removeFromTop (140));
+    presetBar.setBounds (r.removeFromTop (48).reduced (20, 4));
 
-    r.reduce (18, 0);
-    r.removeFromTop (14);
+    r.reduce (20, 8);
 
-    banner.setBounds (r.removeFromTop (150));
+    // Knob row: PITCH, MOD, ROOT, CLEARING, EXPANSE, BLOOM, MACROS (wider), OUTPUT.
+    struct Column { juce::Component* component; float weight; };
+    const Column columns[] {
+        { &pitchWheel,    1.0f },
+        { &modWheel,      1.0f },
+        { &rootKnob,      1.0f },
+        { &clearingKnob,  1.0f },
+        { &expanseKnob,   1.0f },
+        { &bloomKnob,     1.0f },
+        { &macrosPanel,   1.8f },
+        { &outputMeter,   1.0f },
+    };
 
-    r.removeFromTop (16);
+    float totalWeight = 0.0f;
+    for (auto& c : columns)
+        totalWeight += c.weight;
 
-    // --- four equal-width layer panels
+    const auto unitWidth = (float) r.getWidth() / totalWeight;
+    auto x = (float) r.getX();
+
+    for (auto& c : columns)
     {
-        auto row = r.removeFromTop (248);
-        const auto gap = 14;
-        const auto panelWidth = (row.getWidth() - gap * (kNumLayers - 1)) / kNumLayers;
-
-        for (int i = 0; i < kNumLayers; ++i)
-        {
-            auto cell = row.removeFromLeft (i == kNumLayers - 1 ? row.getWidth() : panelWidth);
-            layerPanels[i]->setBounds (cell);
-
-            if (i < kNumLayers - 1)
-                row.removeFromLeft (gap);
-        }
-    }
-
-    r.removeFromTop (16);
-
-    // --- pitch / mod graphs, side by side
-    {
-        auto row = r.removeFromTop (128);
-        const auto half = (row.getWidth() - 14) / 2;
-        pitchGraph.setBounds (row.removeFromLeft (half));
-        row.removeFromLeft (14);
-        modGraph.setBounds (row);
-    }
-
-    r.removeFromTop (16);
-
-    // --- global parameters (left, wider) + preset browser (right)
-    {
-        auto row = r.removeFromTop (juce::jmax (0, r.getHeight() - 18));
-        const auto globalWidth = juce::roundToInt ((float) (row.getWidth() - 14) * 0.6f);
-
-        globalPanel.setBounds (row.removeFromLeft (globalWidth));
-        row.removeFromLeft (14);
-        presetBrowser.setBounds (row);
+        const auto w = juce::roundToInt (c.weight * unitWidth);
+        c.component->setBounds (juce::Rectangle<int> (juce::roundToInt (x), r.getY(), w, r.getHeight()).reduced (6, 0));
+        x += (float) w;
     }
 }

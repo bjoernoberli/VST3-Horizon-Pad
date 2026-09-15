@@ -62,21 +62,23 @@ target_sources(HorizonPad PRIVATE
     Source/PluginEditor.cpp
 
     Source/dsp/LayerBase.cpp
-    Source/dsp/WarmPadLayer.cpp
-    Source/dsp/AnalogStringsLayer.cpp
-    Source/dsp/GranularTextureLayer.cpp
-    Source/dsp/SubPadLayer.cpp
+    Source/dsp/WarmFoundationLayer.cpp
+    Source/dsp/AnalogEnsembleLayer.cpp
+    Source/dsp/AiryChoirLayer.cpp
+    Source/dsp/MotionPadLayer.cpp
     Source/dsp/FxChain.cpp
 
     Source/presets/Presets.cpp
 
     Source/gui/HorizonLookAndFeel.cpp
-    Source/gui/HeaderBar.cpp
-    Source/gui/BannerView.cpp
-    Source/gui/LayerPanel.cpp
-    Source/gui/GraphView.cpp
-    Source/gui/GlobalParamsPanel.cpp
-    Source/gui/PresetBrowser.cpp)
+    Source/gui/TitleBanner.cpp
+    Source/gui/PresetBar.cpp
+    Source/gui/PadKnob.cpp
+    Source/gui/MacrosPanel.cpp
+    Source/gui/WheelSlider.cpp
+    Source/gui/OutputMeter.cpp
+    Source/gui/OnScreenKeyboard.cpp
+    Source/gui/FooterBar.cpp)
 
 target_include_directories(HorizonPad PRIVATE Source)
 

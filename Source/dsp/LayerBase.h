@@ -1,21 +1,46 @@
 #pragma once
 
-#include "ToneState.h"
+#include "HorizonTypes.h"
 
 namespace horizon
 {
 
 /**
-    Common machinery shared by the four sound layers.
+    Common machinery shared by the four Four Pads sound layers.
 
     Voice allocation happens once, centrally, in the processor: every layer is
     told about the same note in the same voice slot, so a chord plays coherently
-    across all four layers. Each layer keeps its own oscillator / grain state per
-    voice and its own amplitude envelope (so a layer with an 8 second attack can
-    still be swelling while a snappier layer has already finished).
+    across all four layers. Each layer keeps its own oscillator state per voice
+    and its own amplitude envelope with layer-specific, fixed (non-user-editable)
+    ADSR timings taken straight from the validated Faust sound design
+    (four_pads.dsp) - unlike an earlier iteration of this plugin, the current
+    product spec exposes no per-layer tone knobs, only the four pad volumes and
+    four global macros, so each layer's character is baked in rather than
+    user-editable.
 
-    Rendering is done into a per-layer scratch buffer so that each layer can be
-    filtered independently before being summed into the mix.
+    Two global macros reach every layer identically, set once per block by the
+    processor:
+      * attackTimeScale     - ATTACK macro. 1.0 = the layer's own designed
+                               attack time; <1 snappier, >1 slower. Multiplies
+                               attack only, so each layer's relative timing
+                               offset (part of what keeps the four pads from
+                               all arriving at once) is preserved.
+      * brightnessMultiplier - FILTER macro. 1.0 = the layer's own designed
+                               cutoff curve; <1 darker, >1 brighter. Multiplies
+                               whatever cutoff-over-time curve the layer already
+                               computes from its envelope, rather than replacing
+                               it, so the "opens with the envelope" shape from
+                               the sound design survives at every macro setting.
+
+    Performance state (pitch bend, mod wheel) also reaches every layer
+    identically, set once per block:
+      * pitchBendSemitones  - added to every voice's frequency this block.
+      * modAmount            - extra analog-style drift depth on top of each
+                               layer's own baseline drift, 0 = baseline only.
+
+    Rendering is done into a per-layer scratch buffer so that each layer can
+    apply its own filtering/effects independently before being summed into the
+    mix by the processor.
 
     Everything here is allocation-free once prepare() has run. prepare() is the
     only method that may allocate and is only ever called from prepareToPlay().
@@ -33,12 +58,6 @@ public:
         scratch.setSize (2, maxBlockSize, false, true, false);
         scratch.clear();
 
-        juce::dsp::ProcessSpec spec { newSampleRate, (juce::uint32) maxBlockSize, 2 };
-        toneFilter.prepare (spec);
-        toneFilter.setType (juce::dsp::StateVariableTPTFilterType::lowpass);
-        toneFilter.setResonance (0.55f);
-        toneFilter.reset();
-
         for (auto& v : voices)
         {
             v.env.setSampleRate (newSampleRate);
@@ -46,8 +65,7 @@ public:
             v.active = false;
         }
 
-        prepareLayer (spec);
-        applyTone (tone);
+        prepareLayer ({ newSampleRate, (juce::uint32) maxBlockSize, 2 });
     }
 
     void reset()
@@ -59,18 +77,22 @@ public:
         }
 
         scratch.clear();
-        toneFilter.reset();
         resetLayer();
     }
 
-    /** Called from the audio thread, once per block, when the tone block changed. */
-    void setTone (const LayerTone& newTone)
+    /** Called from the audio thread, once per block. */
+    void setMacros (float newAttackTimeScale, float newBrightnessMultiplier) noexcept
     {
-        tone = newTone;
-        applyTone (newTone);
+        attackTimeScale = newAttackTimeScale;
+        brightnessMultiplier = newBrightnessMultiplier;
     }
 
-    const LayerTone& getTone() const noexcept { return tone; }
+    /** Called from the audio thread, once per block. */
+    void setPerformance (float newPitchBendSemitones, float newModAmount) noexcept
+    {
+        pitchBendSemitones = newPitchBendSemitones;
+        modAmount = newModAmount;
+    }
 
     void noteOn (int voiceIndex, int midiNote, float velocity)
     {
@@ -79,6 +101,14 @@ public:
         v.frequency = (float) juce::MidiMessage::getMidiNoteInHertz (midiNote);
         v.velocity = velocity;
         v.active = true;
+
+        juce::ADSR::Parameters p;
+        p.attack  = juce::jmax (0.001f, attackSeconds() * attackTimeScale);
+        p.decay   = decaySeconds();
+        p.sustain = sustainLevel();
+        p.release = releaseSeconds();
+        v.env.setParameters (p);
+        v.env.reset();
         v.env.noteOn();
 
         startVoice (voiceIndex, v.frequency, velocity);
@@ -124,12 +154,6 @@ public:
 
         renderLayerTail (scratch, numSamples);
 
-        {
-            juce::dsp::AudioBlock<float> block (scratch.getArrayOfWritePointers(), 2, 0, (size_t) numSamples);
-            juce::dsp::ProcessContextReplacing<float> ctx (block);
-            toneFilter.process (ctx);
-        }
-
         for (int ch = 0; ch < juce::jmin (2, target.getNumChannels()); ++ch)
             target.addFrom (ch, 0, scratch, ch, 0, numSamples);
     }
@@ -159,22 +183,11 @@ protected:
     /** Optional post-voice processing that must run even with no active voices. */
     virtual void renderLayerTail (juce::AudioBuffer<float>& /*target*/, int /*numSamples*/) {}
 
-    /** Called whenever the tone block changes (and from prepare()). */
-    virtual void applyTone (const LayerTone& newTone)
-    {
-        juce::ADSR::Parameters p;
-        p.attack  = attackSeconds (newTone.attack);
-        p.decay   = 0.75f;
-        p.sustain = 0.85f;
-        p.release = releaseSeconds (newTone.release);
-
-        for (auto& v : voices)
-            v.env.setParameters (p);
-
-        toneFilter.setCutoffFrequency (juce::jlimit (40.0f,
-                                                     (float) (sampleRate * 0.45),
-                                                     toneCutoffHz (newTone.tone)));
-    }
+    /** This layer's fixed (Faust-validated) ADSR timings, in seconds/0..1. Subclasses override. */
+    virtual float attackSeconds() const noexcept = 0;
+    virtual float decaySeconds() const noexcept = 0;
+    virtual float sustainLevel() const noexcept = 0;
+    virtual float releaseSeconds() const noexcept = 0;
 
     /** Cheap band-limited-ish saw: a polyBLEP-corrected ramp. */
     static float polyBlepSaw (float phase, float phaseIncrement) noexcept
@@ -195,6 +208,14 @@ protected:
         return value;
     }
 
+    /** Naive triangle from a 0..1 phase - triangle's weak high-frequency content
+        makes it low-alias-risk enough to skip polyBLEP correction (same call
+        made elsewhere in this codebase). */
+    static float triangleWave (float phase) noexcept
+    {
+        return 4.0f * std::abs (phase - 0.5f) - 1.0f;
+    }
+
     static float wrapPhase (float phase) noexcept
     {
         while (phase >= 1.0f) phase -= 1.0f;
@@ -202,15 +223,27 @@ protected:
         return phase;
     }
 
+    /** Applies pitchBendSemitones to a base frequency. Call from renderVoice. */
+    float bentFrequency (float baseFrequency) const noexcept
+    {
+        return baseFrequency * std::pow (2.0f, pitchBendSemitones / 12.0f);
+    }
+
     double sampleRate = 44100.0;
     int maxBlockSize = 512;
-    LayerTone tone;
     std::array<Voice, (size_t) kMaxVoices> voices;
 
     juce::AudioBuffer<float> scratch;
-    juce::dsp::StateVariableTPTFilter<float> toneFilter;
 
-    /** Cheap noise source. Audio thread only. */
+    /** Set once per block by the processor from the ATTACK/FILTER macros. */
+    float attackTimeScale = 1.0f;
+    float brightnessMultiplier = 1.0f;
+
+    /** Set once per block by the processor from MIDI/UI performance state. */
+    float pitchBendSemitones = 0.0f;
+    float modAmount = 0.0f;
+
+    /** Cheap noise source, kept for any layer that still wants a bit of texture. */
     juce::Random rng { juce::Random::getSystemRandom().nextInt64() };
 };
 

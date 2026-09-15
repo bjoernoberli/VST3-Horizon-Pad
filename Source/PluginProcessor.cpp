@@ -7,11 +7,6 @@ using namespace horizon;
 
 namespace
 {
-    const juce::Identifier kStateType { "HorizonPadState" };
-    const juce::Identifier kToneType  { "Tone" };
-    const juce::Identifier kLayerType { "Layer" };
-    const juce::Identifier kProgramProperty { "program" };
-
     juce::String percentText (float value, int)
     {
         return juce::String (juce::roundToInt (value * 100.0f)) + " %";
@@ -20,6 +15,14 @@ namespace
     float percentValue (const juce::String& text)
     {
         return juce::jlimit (0.0f, 1.0f, text.getFloatValue() * 0.01f);
+    }
+
+    /** ATTACK/FILTER macro mapping: 0.5 = the sound design's own validated
+        value (no change), <0.5 halves it, >0.5 doubles it, on a log2 curve so
+        the knob feels even in both directions. */
+    float macroMultiplier (float macroValue) noexcept
+    {
+        return std::pow (2.0f, (juce::jlimit (0.0f, 1.0f, macroValue) - 0.5f) * 2.0f);
     }
 }
 
@@ -43,16 +46,16 @@ juce::AudioProcessorValueTreeState::ParameterLayout HorizonPadAudioProcessor::cr
                 .withLabel ("%")));
     };
 
-    // The eight (and only eight) host-automatable parameters, in the order the
-    // product spec lists them.
-    addPercent (ParamID::warmPadVolume,       "Warm Pad Volume",        0.82f);
-    addPercent (ParamID::analogStringsVolume, "Analog Strings Volume",  0.66f);
-    addPercent (ParamID::granularVolume,      "Granular Texture Volume", 0.28f);
-    addPercent (ParamID::subPadVolume,        "Sub Pad Volume",         0.45f);
-    addPercent (ParamID::reverb,              "Reverb",                 0.45f);
-    addPercent (ParamID::delay,               "Delay",                  0.22f);
-    addPercent (ParamID::filter,              "Filter",                 0.68f);
-    addPercent (ParamID::fxAmount,            "FX Amount",              0.60f);
+    // The eight (and only eight) host-automatable parameters: four pad
+    // volumes, then four macros - matching the GUI's knob row left to right.
+    addPercent (ParamID::rootVolume,     "Root",     0.75f);
+    addPercent (ParamID::clearingVolume, "Clearing", 0.30f);
+    addPercent (ParamID::expanseVolume,  "Expanse",  0.15f);
+    addPercent (ParamID::bloomVolume,    "Bloom",    0.25f);
+    addPercent (ParamID::attackMacro,    "Attack",   0.40f);
+    addPercent (ParamID::filterMacro,    "Filter",   0.30f);
+    addPercent (ParamID::widthMacro,     "Width",    0.40f);
+    addPercent (ParamID::reverbMacro,    "Reverb",   0.20f);
 
     return layout;
 }
@@ -63,11 +66,12 @@ HorizonPadAudioProcessor::HorizonPadAudioProcessor()
                                 .withOutput ("Output", juce::AudioChannelSet::stereo(), true)),
       apvts (*this, nullptr, "PARAMETERS", createParameterLayout())
 {
-    layers = { &warmPad, &analogStrings, &granular, &subPad };
+    layers = { &warmFoundation, &analogEnsemble, &airyChoir, &motionPad };
 
-    const char* volumeIds[] { ParamID::warmPadVolume, ParamID::analogStringsVolume,
-                              ParamID::granularVolume, ParamID::subPadVolume };
-    const char* globalIds[] { ParamID::reverb, ParamID::delay, ParamID::filter, ParamID::fxAmount };
+    const char* volumeIds[] { ParamID::rootVolume, ParamID::clearingVolume,
+                              ParamID::expanseVolume, ParamID::bloomVolume };
+    const char* macroIds[] { ParamID::attackMacro, ParamID::filterMacro,
+                             ParamID::widthMacro, ParamID::reverbMacro };
 
     for (int i = 0; i < kNumLayers; ++i)
     {
@@ -77,15 +81,14 @@ HorizonPadAudioProcessor::HorizonPadAudioProcessor()
 
     for (int i = 0; i < kNumGlobalParams; ++i)
     {
-        globalParams[(size_t) i] = apvts.getRawParameterValue (globalIds[i]);
-        jassert (globalParams[(size_t) i] != nullptr);
+        macroParams[(size_t) i] = apvts.getRawParameterValue (macroIds[i]);
+        jassert (macroParams[(size_t) i] != nullptr);
     }
 
-    // The parameter defaults above are already Golden Horizon's values, so the
-    // constructor only has to seed the non-automated tone block. Deliberately
-    // no setValueNotifyingHost() here - hosts dislike parameter traffic from a
+    // The parameter defaults above are already Lagerfeuer's values, so there
+    // is nothing else to seed at construction. Deliberately no
+    // setValueNotifyingHost() here - hosts dislike parameter traffic from a
     // processor constructor.
-    toneState.store (getFactoryPresets().front().tone);
 }
 
 HorizonPadAudioProcessor::~HorizonPadAudioProcessor() = default;
@@ -111,12 +114,6 @@ void HorizonPadAudioProcessor::prepareToPlay (double sampleRate, int samplesPerB
 
     for (int i = 0; i < kNumLayers; ++i)
         layerGain[(size_t) i].setCurrentAndTargetValue (volumeParams[(size_t) i]->load());
-
-    // Force a tone refresh on the first block.
-    lastToneGeneration = 0;
-    const auto tones = toneState.load();
-    for (int i = 0; i < kNumLayers; ++i)
-        layers[(size_t) i]->setTone (tones[(size_t) i]);
 
     allNotesOff (true);
 }
@@ -173,9 +170,10 @@ void HorizonPadAudioProcessor::setCurrentProgram (int index)
 
 void HorizonPadAudioProcessor::applyPreset (const Preset& preset)
 {
-    const char* volumeIds[] { ParamID::warmPadVolume, ParamID::analogStringsVolume,
-                              ParamID::granularVolume, ParamID::subPadVolume };
-    const char* globalIds[] { ParamID::reverb, ParamID::delay, ParamID::filter, ParamID::fxAmount };
+    const char* volumeIds[] { ParamID::rootVolume, ParamID::clearingVolume,
+                              ParamID::expanseVolume, ParamID::bloomVolume };
+    const char* macroIds[] { ParamID::attackMacro, ParamID::filterMacro,
+                             ParamID::widthMacro, ParamID::reverbMacro };
 
     auto setParam = [&] (const char* id, float value)
     {
@@ -187,20 +185,11 @@ void HorizonPadAudioProcessor::applyPreset (const Preset& preset)
         setParam (volumeIds[i], preset.volumes[(size_t) i]);
 
     for (int i = 0; i < kNumGlobalParams; ++i)
-        setParam (globalIds[i], preset.globals[(size_t) i]);
+        setParam (macroIds[i], preset.macros[(size_t) i]);
 
-    // One store() bumps the generation counter once, so the audio thread sees
-    // the whole tone block change atomically enough for its purposes.
-    toneState.store (preset.tone);
-}
-
-void HorizonPadAudioProcessor::setToneValue (int layer, int field, float value)
-{
-    if (! juce::isPositiveAndBelow (layer, kNumLayers)
-        || ! juce::isPositiveAndBelow (field, AtomicToneState::kNumToneFields))
-        return;
-
-    toneState.storeValue (layer, field, juce::jlimit (0.0f, 1.0f, value));
+    // Wheels spring back to rest on a preset change, like a real keyboard.
+    performanceState.setPitchBendSemitones (0.0f);
+    performanceState.setModAmount (0.0f);
 }
 
 //==============================================================================
@@ -313,6 +302,17 @@ void HorizonPadAudioProcessor::handleMidiMessage (const juce::MidiMessage& messa
         allNotesOff (false);
     else if (message.isAllSoundOff())
         allNotesOff (true);
+    else if (message.isPitchWheel())
+    {
+        // 14-bit, centred on 8192 -> -1..+1 -> +/- the wheel's semitone range.
+        const auto normalised = ((float) message.getPitchWheelValue() - 8192.0f) / 8192.0f;
+        performanceState.setPitchBendSemitones (juce::jlimit (-1.0f, 1.0f, normalised)
+                                                * horizon::PerformanceState::kPitchBendRangeSemitones);
+    }
+    else if (message.isController() && message.getControllerNumber() == 1) // mod wheel (CC1)
+    {
+        performanceState.setModAmount ((float) message.getControllerValue() / 127.0f);
+    }
 }
 
 //==============================================================================
@@ -357,23 +357,31 @@ void HorizonPadAudioProcessor::processBlock (juce::AudioBuffer<float>& buffer, j
     if (numSamples <= 0)
         return;
 
-    // --- Non-automated tone block: one relaxed load per block in the common case.
-    if (toneState.pollGeneration (lastToneGeneration))
-    {
-        const auto tones = toneState.load();
+    // Merge on-screen-keyboard clicks (see OnScreenKeyboard) into the real MIDI
+    // stream before anything else touches it - the standard JUCE idiom for a
+    // GUI to trigger notes without the message thread reaching into
+    // audio-thread voice-allocation state directly.
+    keyboardState.processNextMidiBuffer (midiMessages, 0, numSamples, true);
 
-        for (int i = 0; i < kNumLayers; ++i)
-            layers[(size_t) i]->setTone (tones[(size_t) i]);
-    }
-
-    // --- Automatable parameters: set smoothing targets once per block.
+    // --- Automatable parameters: set smoothing targets and per-block macros.
     for (int i = 0; i < kNumLayers; ++i)
         layerGain[(size_t) i].setTargetValue (volumeParams[(size_t) i]->load (std::memory_order_relaxed));
 
-    fxChain.setParameters (globalParams[0]->load (std::memory_order_relaxed),
-                           globalParams[1]->load (std::memory_order_relaxed),
-                           globalParams[2]->load (std::memory_order_relaxed),
-                           globalParams[3]->load (std::memory_order_relaxed));
+    const auto attackScale = macroMultiplier (macroParams[0]->load (std::memory_order_relaxed));
+    const auto brightnessMul = macroMultiplier (macroParams[1]->load (std::memory_order_relaxed));
+    const auto width = macroParams[2]->load (std::memory_order_relaxed);
+    const auto reverbSend = macroParams[3]->load (std::memory_order_relaxed);
+
+    const auto pitchBend = performanceState.getPitchBendSemitones();
+    const auto modAmount = performanceState.getModAmount();
+
+    for (auto* layer : layers)
+    {
+        layer->setMacros (attackScale, brightnessMul);
+        layer->setPerformance (pitchBend, modAmount);
+    }
+
+    fxChain.setParameters (width, reverbSend);
 
     // --- Render, splitting the block at MIDI event boundaries.
     int position = 0;
@@ -397,12 +405,11 @@ void HorizonPadAudioProcessor::processBlock (juce::AudioBuffer<float>& buffer, j
 
     // --- Output stage: a fixed headroom trim, then a tanh soft clip.
     //
-    // The trim exists because the wettest programs (Dreamscape, Ocean Mist)
-    // stack four layers plus a long reverb tail and would otherwise sit right on
-    // the soft clipper with a three-note chord, let alone a six-note one. -4.4 dB
-    // keeps them comfortably below it; the clipper is then only a safety net for
-    // pathological automation, not part of the normal sound.
-    constexpr float kOutputTrim = 0.6f;
+    // Sternenzelt and Alpengluhen stack Expanse's shimmer/reverb on top of a
+    // multi-note chord; the trim keeps that comfortably below the clipper, so
+    // the clipper is only a safety net for pathological automation, not part
+    // of the normal sound.
+    constexpr float kOutputTrim = 0.75f;
 
     for (int ch = 0; ch < buffer.getNumChannels(); ++ch)
     {
@@ -419,29 +426,9 @@ void HorizonPadAudioProcessor::processBlock (juce::AudioBuffer<float>& buffer, j
 //==============================================================================
 void HorizonPadAudioProcessor::getStateInformation (juce::MemoryBlock& destData)
 {
-    juce::ValueTree root (kStateType);
-    root.setProperty (kProgramProperty, currentProgram.load(), nullptr);
-
-    // The eight automatable parameters.
+    juce::ValueTree root ("HorizonPadState");
+    root.setProperty ("program", currentProgram.load(), nullptr);
     root.appendChild (apvts.copyState(), nullptr);
-
-    // The non-automated tone block.
-    juce::ValueTree toneTree (kToneType);
-
-    for (int layer = 0; layer < kNumLayers; ++layer)
-    {
-        juce::ValueTree layerTree (kLayerType);
-        layerTree.setProperty ("index", layer, nullptr);
-
-        for (int field = 0; field < AtomicToneState::kNumToneFields; ++field)
-            layerTree.setProperty (juce::Identifier (AtomicToneState::fieldName (field)),
-                                   toneState.loadValue (layer, field),
-                                   nullptr);
-
-        toneTree.appendChild (layerTree, nullptr);
-    }
-
-    root.appendChild (toneTree, nullptr);
 
     if (auto xml = root.createXml())
         copyXmlToBinary (*xml, destData);
@@ -456,7 +443,7 @@ void HorizonPadAudioProcessor::setStateInformation (const void* data, int sizeIn
 
     auto root = juce::ValueTree::fromXml (*xml);
 
-    if (! root.hasType (kStateType))
+    if (! root.hasType ("HorizonPadState"))
     {
         // Backwards/forwards tolerance: an APVTS-only state still loads.
         if (root.hasType (apvts.state.getType()))
@@ -468,32 +455,8 @@ void HorizonPadAudioProcessor::setStateInformation (const void* data, int sizeIn
     if (auto params = root.getChildWithName (apvts.state.getType()); params.isValid())
         apvts.replaceState (params);
 
-    if (auto toneTree = root.getChildWithName (kToneType); toneTree.isValid())
-    {
-        auto tones = toneState.load();
-
-        for (int i = 0; i < toneTree.getNumChildren(); ++i)
-        {
-            auto layerTree = toneTree.getChild (i);
-            const int layer = layerTree.getProperty ("index", i);
-
-            if (! juce::isPositiveAndBelow (layer, kNumLayers))
-                continue;
-
-            for (int field = 0; field < AtomicToneState::kNumToneFields; ++field)
-            {
-                const juce::Identifier id (AtomicToneState::fieldName (field));
-
-                if (layerTree.hasProperty (id))
-                    AtomicToneState::setField (tones[(size_t) layer], field, (float) layerTree.getProperty (id));
-            }
-        }
-
-        toneState.store (tones);
-    }
-
     currentProgram.store (juce::jlimit (0, juce::jmax (0, getNumFactoryPresets() - 1),
-                                        (int) root.getProperty (kProgramProperty, 0)));
+                                        (int) root.getProperty ("program", 0)));
 
     sendChangeMessage();
 }

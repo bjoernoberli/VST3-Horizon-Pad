@@ -1,46 +1,30 @@
 #pragma once
 
-#include "ToneState.h"
+#include "HorizonTypes.h"
 
 namespace horizon
 {
 
 /**
-    Global post-mix effect chain: FILTER -> DELAY -> REVERB.
+    Global post-mix stage: WIDTH -> REVERB, ported from the tail end of
+    four_pads.dsp.
 
-    Driven by the four global host parameters (all 0..1 here; the UI shows them
-    as 0..100%).
+    The Faust source sums all four pads into one MONO `dry` signal, then
+    builds stereo purely from a short Haas-style delay difference between
+    channels (a fixed 0/90-sample split), and adds one shared room send:
 
-    ---------------------------------------------------------------------------
-    FX AMOUNT mapping (the "how much of all this do I want" macro)
-    ---------------------------------------------------------------------------
-    FX Amount is a single depth macro over the whole wet side of the chain. The
-    rule is: at fxAmount = 0 the chain is audibly transparent regardless of the
-    other three knobs; at fxAmount = 1 the other three knobs act at full value.
+        wetMono = dry : re.mono_freeverb(0.7, 0.35, 0.25, 0) * reverbSend
+        outL    = dry               * 0.85 + wetMono
+        outR    = delay(dry, width) * 0.85 + wetMono
 
-      * Filter  - the Filter parameter is a brightness macro where 1 = wide
-                  open. Rather than scaling the cutoff (which would make
-                  fxAmount = 0 sound *dark*), fxAmount scales how far the filter
-                  is allowed to close:
+    WIDTH (0..1) scales that delay split from mono (0) up to the fully-wide
+    90-sample split the sound design was tuned and validated against (1) -
+    the DSP layers upstream already write identical left/right (see
+    LayerBase - each pad is authored as a mono voice, exactly like the Faust
+    source), so this is the only place stereo width is created at all.
 
-                      effectiveFilter = 1 - fxAmount * (1 - filter)
-
-                  so fxAmount = 0 pins the cutoff wide open (no effect) and
-                  fxAmount = 1 gives the user exactly the cutoff they dialled.
-                  effectiveFilter then maps exponentially onto 200 Hz..18 kHz.
-
-      * Delay   - wet mix = delay * fxAmount. Feedback is also gently scaled
-                  (0.18 .. 0.62 by the delay knob) so a high Delay setting means
-                  both "more repeats" and "louder repeats".
-
-      * Reverb  - wet = reverb * fxAmount, and the reverb room size tracks the
-                  Reverb knob (0.35 .. 0.95) so turning it up makes the space
-                  bigger as well as wetter. Dry is kept at 1 - 0.65 * wet so the
-                  source never disappears completely.
-
-    Every one of these targets is smoothed (juce::SmoothedValue, 50 ms ramp) and
-    updated once per block, so parameter moves and preset switches never click.
-    ---------------------------------------------------------------------------
+    REVERB (0..1) is the wet send level; 0.28 was the fixed value the sound
+    design was validated against, kept here as the parameter's default.
 */
 class FxChain
 {
@@ -50,35 +34,25 @@ public:
     void prepare (double sampleRate, int maximumBlockSize);
     void reset();
 
-    /** Message-thread-free: call from processBlock with the current parameter values. */
-    void setParameters (float reverb, float delay, float filter, float fxAmount) noexcept;
+    /** Message-thread-free: call from processBlock with the current macro values (0..1). */
+    void setParameters (float width, float reverbSend) noexcept;
 
     void process (juce::AudioBuffer<float>& buffer, int numSamples);
 
 private:
-    static constexpr float kMaxDelaySeconds = 1.5f;
-    static constexpr float kDelayTimeSeconds = 0.44f;   // musical-ish default, no host sync
+    static constexpr int kMaxWidthSamples = 90;
 
     double currentSampleRate = 44100.0;
 
-    juce::dsp::StateVariableTPTFilter<float> filter;
-
-    juce::dsp::DelayLine<float, juce::dsp::DelayLineInterpolationTypes::Linear> delayLine
-        { 1 }; // real size set in prepare()
-    juce::dsp::StateVariableTPTFilter<float> delayDamping;
-
+    juce::dsp::DelayLine<float, juce::dsp::DelayLineInterpolationTypes::Linear> widthDelay { kMaxWidthSamples + 4 };
     juce::dsp::Reverb reverb;
     juce::Reverb::Parameters reverbParams;
 
-    juce::AudioBuffer<float> wetScratch;
+    juce::AudioBuffer<float> dryMono;
+    juce::AudioBuffer<float> wetStereo;
 
-    juce::SmoothedValue<float> smoothedCutoff;
-    juce::SmoothedValue<float> smoothedDelayMix;
-    juce::SmoothedValue<float> smoothedDelayFeedback;
-    juce::SmoothedValue<float> smoothedReverbWet;
-
-    float lastReverbSize = -1.0f;
-    bool reverbIdle = true;
+    juce::SmoothedValue<float> smoothedWidthSamples;
+    juce::SmoothedValue<float> smoothedReverbSend;
 
     JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR (FxChain)
 };
