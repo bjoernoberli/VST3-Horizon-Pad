@@ -189,6 +189,58 @@ void drawPanel (juce::Graphics& g, juce::Rectangle<float> bounds, juce::Colour f
     g.drawRoundedRectangle (bounds.reduced (0.5f), corner, 1.0f);
 }
 
+void paintPanelSurface (juce::Graphics& g, juce::Rectangle<float> bounds)
+{
+    // --- Gradient fill: near-black at the bottom rising to deep amber
+    // at the top, matching panelStyle's four gradient stops exactly.
+    juce::ColourGradient grad (Palette::panelGradientBottom, bounds.getX(), bounds.getBottom(),
+                               Palette::panelGradientTop, bounds.getX(), bounds.getY(), false);
+    grad.addColour (0.45, Palette::panelGradientLower);
+    grad.addColour (0.78, Palette::panelGradientUpper);
+    g.setGradientFill (grad);
+    g.fillRect (bounds);
+
+    // --- Mountain-skyline silhouette along the bottom (fixed jagged
+    // polygon, matching skylineStyle's clip-path points exactly).
+    {
+        const auto skylineHeight = juce::jmin (120.0f, bounds.getHeight() * 0.4f);
+        auto skylineArea = bounds.removeFromBottom (skylineHeight);
+        const auto w = skylineArea.getWidth();
+        const auto top = skylineArea.getY();
+        const auto h = skylineArea.getHeight();
+
+        const float pointsPct[][2] {
+            { 0.0f, 100.0f }, { 0.0f, 78.0f }, { 9.0f, 60.0f }, { 18.0f, 82.0f },
+            { 29.0f, 55.0f }, { 40.0f, 84.0f }, { 52.0f, 58.0f }, { 64.0f, 86.0f },
+            { 76.0f, 56.0f }, { 88.0f, 80.0f }, { 100.0f, 62.0f }, { 100.0f, 100.0f },
+        };
+
+        juce::Path skyline;
+        skyline.startNewSubPath (skylineArea.getX() + pointsPct[0][0] * 0.01f * w,
+                                 top + pointsPct[0][1] * 0.01f * h);
+
+        for (auto& p : pointsPct)
+            skyline.lineTo (skylineArea.getX() + p[0] * 0.01f * w, top + p[1] * 0.01f * h);
+
+        skyline.closeSubPath();
+
+        g.setColour (Palette::skyline);
+        g.fillPath (skyline);
+    }
+
+    // --- Soft gold glow, top-right corner (radial-gradient(circle, gold/0.16, transparent 70%)).
+    {
+        const auto glowDiameter = 420.0f;
+        const auto glowCentre = juce::Point<float> (bounds.getRight() - 100.0f + glowDiameter * 0.5f,
+                                                    bounds.getY() - 140.0f + glowDiameter * 0.5f);
+
+        juce::ColourGradient radial (Palette::glow, glowCentre.x, glowCentre.y,
+                                    Palette::glow.withAlpha (0.0f), glowCentre.x, glowCentre.y - glowDiameter * 0.35f, true);
+        g.setGradientFill (radial);
+        g.fillEllipse (juce::Rectangle<float> (glowDiameter, glowDiameter).withCentre (glowCentre));
+    }
+}
+
 void drawHorizonPanel (juce::Graphics& g, juce::Rectangle<float> bounds)
 {
     constexpr float corner = 24.0f;
@@ -199,55 +251,7 @@ void drawHorizonPanel (juce::Graphics& g, juce::Rectangle<float> bounds)
     {
         juce::Graphics::ScopedSaveState save (g);
         g.reduceClipRegion (panelPath);
-
-        // --- Gradient fill: near-black at the bottom rising to deep amber
-        // at the top, matching panelStyle's four gradient stops exactly.
-        juce::ColourGradient grad (Palette::panelGradientBottom, bounds.getX(), bounds.getBottom(),
-                                   Palette::panelGradientTop, bounds.getX(), bounds.getY(), false);
-        grad.addColour (0.45, Palette::panelGradientLower);
-        grad.addColour (0.78, Palette::panelGradientUpper);
-        g.setGradientFill (grad);
-        g.fillRect (bounds);
-
-        // --- Mountain-skyline silhouette along the bottom (fixed jagged
-        // polygon, matching skylineStyle's clip-path points exactly).
-        {
-            const auto skylineHeight = juce::jmin (120.0f, bounds.getHeight() * 0.4f);
-            auto skylineArea = bounds.removeFromBottom (skylineHeight);
-            const auto w = skylineArea.getWidth();
-            const auto top = skylineArea.getY();
-            const auto h = skylineArea.getHeight();
-
-            const float pointsPct[][2] {
-                { 0.0f, 100.0f }, { 0.0f, 78.0f }, { 9.0f, 60.0f }, { 18.0f, 82.0f },
-                { 29.0f, 55.0f }, { 40.0f, 84.0f }, { 52.0f, 58.0f }, { 64.0f, 86.0f },
-                { 76.0f, 56.0f }, { 88.0f, 80.0f }, { 100.0f, 62.0f }, { 100.0f, 100.0f },
-            };
-
-            juce::Path skyline;
-            skyline.startNewSubPath (skylineArea.getX() + pointsPct[0][0] * 0.01f * w,
-                                     top + pointsPct[0][1] * 0.01f * h);
-
-            for (auto& p : pointsPct)
-                skyline.lineTo (skylineArea.getX() + p[0] * 0.01f * w, top + p[1] * 0.01f * h);
-
-            skyline.closeSubPath();
-
-            g.setColour (Palette::skyline);
-            g.fillPath (skyline);
-        }
-
-        // --- Soft gold glow, top-right corner (radial-gradient(circle, gold/0.16, transparent 70%)).
-        {
-            const auto glowDiameter = 420.0f;
-            const auto glowCentre = juce::Point<float> (bounds.getRight() - 100.0f + glowDiameter * 0.5f,
-                                                        bounds.getY() - 140.0f + glowDiameter * 0.5f);
-
-            juce::ColourGradient radial (Palette::glow, glowCentre.x, glowCentre.y,
-                                        Palette::glow.withAlpha (0.0f), glowCentre.x, glowCentre.y - glowDiameter * 0.35f, true);
-            g.setGradientFill (radial);
-            g.fillEllipse (juce::Rectangle<float> (glowDiameter, glowDiameter).withCentre (glowCentre));
-        }
+        paintPanelSurface (g, bounds);
     }
 
     g.setColour (Palette::panelBorder);

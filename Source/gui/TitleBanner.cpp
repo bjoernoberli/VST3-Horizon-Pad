@@ -10,12 +10,24 @@ TitleBanner::TitleBanner()
 
 void TitleBanner::paint (juce::Graphics& g)
 {
-    // No background here - the shared panel (drawHorizonPanel, painted once
-    // behind the whole window by the editor) already provides the gradient,
-    // skyline and glow. This component only draws the header content itself:
-    // wordmark, then the mountain-sunrise logo, then the tagline - in that
-    // order, matching the design handoff exactly (the logo sits *below* the
-    // wordmark, not above it).
+    // Repaint our own slice of the shared panel background (gradient/glow)
+    // rather than relying on the editor's single top-level paint() having
+    // already painted through underneath us: some hosts repaint this child
+    // in isolation (e.g. after the plugin window is moved/resized), which
+    // left this region showing raw host background instead of the panel.
+    // Using the *window's* full bounds (translated into our own local
+    // coordinate space) keeps the gradient/glow seamless with the rest of
+    // the panel rather than restarting it at our own bounds.
+    if (auto* parent = getParentComponent())
+    {
+        juce::Graphics::ScopedSaveState save (g);
+        g.reduceClipRegion (getLocalBounds());
+        paintPanelSurface (g, parent->getLocalBounds().toFloat().translated (-(float) getX(), -(float) getY()));
+    }
+
+    // Then the header content itself: wordmark, then the mountain-sunrise
+    // logo, then the tagline - in that order, matching the design handoff
+    // exactly (the logo sits *below* the wordmark, not above it).
     auto r = getLocalBounds().toFloat();
 
     // --- Wordmark: a gradient serif italic, hi -> warm gold.

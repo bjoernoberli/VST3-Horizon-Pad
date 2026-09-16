@@ -157,6 +157,20 @@ void drawPanel (juce::Graphics& g, juce::Rectangle<float> bounds,
                 juce::Colour fill = Palette::cardBg, float corner = 10.0f);
 
 /**
+    The panel's gradient fill, mountain-skyline silhouette, and top-right glow
+    - the unclipped, unbordered content of drawHorizonPanel(). Exposed so a
+    child that draws no background of its own (TitleBanner) can repaint an
+    exact, seamless slice of it using the *window's* full bounds translated
+    into that child's local coordinate space, rather than depending on the
+    editor's single top-level paint() call to have already painted through
+    underneath it - some hosts repaint a child in isolation (e.g. after the
+    window is moved/resized, or under GPU-accelerated compositing), which
+    left this region showing raw host/window background instead of the
+    panel when it relied on paint order alone.
+*/
+void paintPanelSurface (juce::Graphics& g, juce::Rectangle<float> fullBounds);
+
+/**
     Paints the one shared panel that is the whole plugin window - gradient
     fill, border, clipped mountain-skyline silhouette, and the top-right glow
     - exactly matching the design handoff's panelStyle/skylineStyle/glowStyle.
