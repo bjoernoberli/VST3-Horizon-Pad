@@ -21,7 +21,7 @@ PresetBar::UserPresetPill::UserPresetPill (juce::String presetName, std::functio
     deleteButton.setClickingTogglesState (false);
     deleteButton.getProperties().set ("noBorder", true);
     deleteButton.setColour (juce::TextButton::buttonColourId, juce::Colours::transparentBlack);
-    deleteButton.setColour (juce::TextButton::textColourOffId, Palette::textFaint);
+    deleteButton.setColour (juce::TextButton::textColourOffId, Palette::cancelBorder); // was textFaint - unreadable against the pill's near-transparent background
     deleteButton.setTooltip ("Delete \"" + name + "\"");
     deleteButton.onClick = std::move (onDelete);
     addAndMakeVisible (deleteButton);
@@ -39,7 +39,7 @@ void PresetBar::UserPresetPill::setActive (bool shouldBeActive)
 
 int PresetBar::UserPresetPill::preferredWidth() const
 {
-    return juce::jmax (70, name.length() * 9 + 28) + 22;
+    return juce::jmax (70, name.length() * 9 + 28) + kDeleteButtonWidth;
 }
 
 void PresetBar::UserPresetPill::paint (juce::Graphics& g)
@@ -57,7 +57,7 @@ void PresetBar::UserPresetPill::paint (juce::Graphics& g)
 void PresetBar::UserPresetPill::resized()
 {
     auto r = getLocalBounds();
-    deleteButton.setBounds (r.removeFromRight (22));
+    deleteButton.setBounds (r.removeFromRight (kDeleteButtonWidth));
     nameButton.setBounds (r);
 }
 
@@ -66,15 +66,12 @@ PresetBar::PresetBar (HorizonPadAudioProcessor& processorToUse)
     : processor (processorToUse)
 {
     presetViewport.setViewedComponent (&presetScrollContent, false);
-    // A real, always-there-when-needed scrollbar rather than relying only on
-    // mouse-wheel/trackpad scrolling: several hosts intercept wheel events
-    // over an embedded plugin view for their own UI (track scrolling, device
-    // chain panning) before the plugin ever sees them, and the pills fill
-    // almost the entire row height/width, leaving barely any bare viewport
-    // background to click-drag on. A thin scrollbar sidesteps both.
-    presetViewport.setScrollBarsShown (false, true); // (vertical, horizontal) - we only want horizontal
-    presetViewport.setScrollBarThickness (8);
-    presetViewport.getHorizontalScrollBar().setColour (juce::ScrollBar::thumbColourId, Palette::gold.withAlpha (0.55f));
+    // No visible scrollbar (it also made the presets row shorter than the
+    // fixed Save/A-B row next to it, since Viewport reserves space for the
+    // bar even at rest) - scrolling still works via wheel/trackpad and via
+    // click-drag anywhere in the row, plus the edge fade in
+    // paintOverChildren() cues that there's more to see.
+    presetViewport.setScrollBarsShown (false, false);
     presetViewport.setScrollOnDragMode (juce::Viewport::ScrollOnDragMode::all);
     addAndMakeVisible (presetViewport);
 
@@ -120,8 +117,9 @@ PresetBar::PresetBar (HorizonPadAudioProcessor& processorToUse)
     addChildComponent (saveConfirmButton);
 
     saveCancelButton.setClickingTogglesState (false);
-    saveCancelButton.setColour (juce::TextButton::buttonColourId, juce::Colours::transparentBlack);
-    saveCancelButton.setColour (juce::TextButton::textColourOffId, Palette::textFaint);
+    saveCancelButton.getProperties().set ("borderColour", (int) Palette::cancelBorder.getARGB());
+    saveCancelButton.setColour (juce::TextButton::buttonColourId, Palette::cancelBg);
+    saveCancelButton.setColour (juce::TextButton::textColourOffId, Palette::cancelBorder);
     saveCancelButton.onClick = [this] { cancelSavingNewPreset(); };
     saveCancelButton.setVisible (false);
     addChildComponent (saveCancelButton);
@@ -296,9 +294,7 @@ void PresetBar::resized()
 
 void PresetBar::layOutScrollContent()
 {
-    // Leave room for the horizontal scrollbar at the bottom even when it's
-    // not currently shown, so pills don't shift/resize when it appears.
-    const auto rowHeight = presetViewport.getHeight() - 8;
+    const auto rowHeight = presetViewport.getHeight();
     int x = 0;
 
     for (auto* b : presetButtons)

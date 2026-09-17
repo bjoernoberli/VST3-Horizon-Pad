@@ -6,10 +6,10 @@ namespace horizon::ui
 {
 
 /**
-    The top of the plugin: a warm radial glow behind a small mountain-sunrise
-    emblem, the serif italic "Horizon Pad" wordmark, and the tagline. Drawn
-    entirely in vector, matching the Claude Design GUI draft this plugin is
-    built from.
+    The top of the plugin: a warm radial glow behind a large mountain-sunrise
+    emblem, with the serif italic "Horizon Pad" wordmark below it. Drawn
+    entirely in vector. The tagline that originally lived here now sits
+    centred in the footer strip instead (FooterBar).
 */
 class TitleBanner final : public juce::Component
 {

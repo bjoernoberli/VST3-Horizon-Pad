@@ -46,6 +46,11 @@ namespace Palette
     const juce::Colour saveConfirmBorder{ 0xff5bbd74 };
     const juce::Colour saveConfirmBg    { 0x2e5bbd74 };
 
+    // Destructive actions (cancel, delete) - a warm red paired the same way
+    // saveConfirmBorder/saveConfirmBg pair for the green "Save" confirm.
+    const juce::Colour cancelBorder     { 0xffe0645a };
+    const juce::Colour cancelBg         { 0x2ee0645a };
+
     // Text.
     const juce::Colour text             { 0xffebeff5 }; // "hi" - wordmark, active pill text
     const juce::Colour textKnobLabel    { 0xffe4e8ef }; // card labels (PITCH, ROOT, ...)

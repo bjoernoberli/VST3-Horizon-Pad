@@ -57,6 +57,11 @@ private:
         const juce::String name;
 
     private:
+        // Matches MacrosPanel's secondary (FILTER/REVERB) knob size, so the
+        // delete "x" reads as a properly-sized control instead of a cramped
+        // corner afterthought.
+        static constexpr int kDeleteButtonWidth = 34;
+
         bool active = false;
         juce::TextButton nameButton, deleteButton;
     };
