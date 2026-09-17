@@ -11,7 +11,15 @@ OutputMeter::OutputMeter (HorizonPadAudioProcessor& processorToUse)
 
 void OutputMeter::refreshFromProcessor()
 {
-    const auto target = juce::jlimit (0.0f, 1.0f, processor.getOutputLevel() * 3.0f); // RMS reads low; scale for a lively meter
+    // Standard peak/VU-meter convention: map the level in dB, not raw linear
+    // amplitude, onto the fill. Ear and eye both track level logarithmically,
+    // so a linear mapping crowds this DSP's whole normal RMS range into the
+    // meter's bottom sliver (previously patched over with an arbitrary *3.0
+    // linear boost that only "worked" for typical playing levels and still
+    // pinned to 100% well before actual clipping).
+    constexpr float kFloorDb = -48.0f;
+    const auto levelDb = juce::Decibels::gainToDecibels (processor.getOutputLevel(), kFloorDb);
+    const auto target = juce::jlimit (0.0f, 1.0f, (levelDb - kFloorDb) / -kFloorDb);
     displayedLevel += (target - displayedLevel) * 0.3f;
     repaint();
 }

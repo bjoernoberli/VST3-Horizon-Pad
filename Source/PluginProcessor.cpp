@@ -55,8 +55,15 @@ namespace
 
     /** The twelve (and only twelve) host-automatable parameter IDs, in the
         fixed order used everywhere a "vols/widths/macros" array is needed:
-        Root, Clearing, Expanse, Bloom, then the same order for width, then
-        Attack, Release, Filter, Reverb. */
+        Root, Clearing, Expanse, Bloom, then Attack, Release, Filter, Reverb,
+        then the same Root/Clearing/Expanse/Bloom order for width. Volumes
+        then macros then widths (not widths then macros) so that a controller
+        that maps its knobs to a plugin's first N host parameters in order -
+        e.g. a Launchkey's 8 knobs in Live's generic Device-knob mode - lands
+        knobs 1-4 on the four pad volumes and knobs 5-8 on the four macros,
+        matching the physical Launchkey layout this GUI's 8-column knob row
+        was designed to mirror (see PluginEditor.h). Width, having no
+        dedicated hardware knobs, sits in the params 9-12 tail instead. */
     const std::array<const char*, (size_t) kNumLayers>& volumeIds()
     {
         static const std::array<const char*, (size_t) kNumLayers> ids {
@@ -103,21 +110,24 @@ juce::AudioProcessorValueTreeState::ParameterLayout HorizonPadAudioProcessor::cr
     };
 
     // The twelve (and only twelve) host-automatable parameters: four pad
-    // volumes, then four per-layer widths, then four macros - matching the
-    // GUI's knob row left to right (width lives inside each pad's own card,
-    // not the macros block).
+    // volumes, then the four macros, then four per-layer widths. Macros sit
+    // right after the volumes (params 5-8) so a hardware controller that
+    // maps its knobs to the plugin's first 8 host parameters - e.g. a
+    // Launchkey in Live's generic Device-knob mode - lands its knobs 5-8 on
+    // ATTACK/RELEASE/FILTER/REVERB, not width (see macroIds()/widthIds()
+    // above for why the order matters).
     addPercent (ParamID::rootVolume,     "Root",     0.75f);
     addPercent (ParamID::clearingVolume, "Clearing", 0.30f);
     addPercent (ParamID::expanseVolume,  "Expanse",  0.15f);
     addPercent (ParamID::bloomVolume,    "Bloom",    0.25f);
-    addPercent (ParamID::rootWidth,      "Root Width",     0.50f);
-    addPercent (ParamID::clearingWidth,  "Clearing Width", 0.60f);
-    addPercent (ParamID::expanseWidth,   "Expanse Width",  0.70f);
-    addPercent (ParamID::bloomWidth,     "Bloom Width",    0.45f);
     addPercent (ParamID::attackMacro,    "Attack",   0.40f);
     addPercent (ParamID::releaseMacro,   "Release",  0.40f);
     addPercent (ParamID::filterMacro,    "Filter",   0.30f);
     addPercent (ParamID::reverbMacro,    "Reverb",   0.20f);
+    addPercent (ParamID::rootWidth,      "Root Width",     0.50f);
+    addPercent (ParamID::clearingWidth,  "Clearing Width", 0.60f);
+    addPercent (ParamID::expanseWidth,   "Expanse Width",  0.70f);
+    addPercent (ParamID::bloomWidth,     "Bloom Width",    0.45f);
 
     return layout;
 }
