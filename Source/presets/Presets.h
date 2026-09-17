@@ -59,7 +59,7 @@ struct Preset
     std::array<float, (size_t) kNumGlobalParams> macros;
 };
 
-/** The five factory programs, in host program order. */
+/** The factory programs, in host program order. */
 const std::vector<Preset>& getFactoryPresets();
 
 int getNumFactoryPresets();
