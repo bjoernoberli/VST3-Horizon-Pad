@@ -21,7 +21,10 @@ struct UserPreset
     /** Root, Clearing, Expanse, Bloom. 0..1. */
     std::array<float, (size_t) kNumLayers> vols {};
 
-    /** Attack, Filter, Width, Reverb. 0..1. */
+    /** Root, Clearing, Expanse, Bloom. 0..1. */
+    std::array<float, (size_t) kNumLayers> widths { 0.5f, 0.5f, 0.5f, 0.5f };
+
+    /** Attack, Release, Filter, Reverb. 0..1. */
     std::array<float, (size_t) kNumGlobalParams> macros {};
 };
 

@@ -8,10 +8,11 @@ namespace horizon::ui
 {
 
 /**
-    The MACROS block: four small knobs in a 2x2 grid - ATTACK/FILTER on top,
-    WIDTH/REVERB below - all genuine host-automatable parameters, all acting
+    The MACROS block: four small knobs in a 2x2 grid - ATTACK/RELEASE on top,
+    FILTER/REVERB below - all genuine host-automatable parameters, all acting
     globally across the four pads (see LayerBase and FxChain for what each one
-    actually does to the DSP).
+    actually does to the DSP). Stereo width lives on each pad's own PadKnob
+    card instead, not here - see PadKnob.h.
 */
 class MacrosPanel final : public juce::Component
 {

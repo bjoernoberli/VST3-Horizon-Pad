@@ -70,16 +70,23 @@ namespace Palette
         juce::Colour (0xffed76b3)    // 4. Bloom (Motion Pad)         - pink,   "life blooms"
     };
 
-    // Macro accents: Attack, Filter, Width, Reverb - taking the design's four
-    // macro-slot colours in order (its fourth slot is labelled DRIVE there;
-    // WIDTH occupies it here instead, a considered, already-approved swap -
-    // see FxChain's doc comment for why WIDTH replaced a distortion stage).
+    // Macro accents: Attack, Release, Filter, Reverb - taking the design's
+    // four macro-slot colours in order (its fourth slot is labelled DRIVE
+    // there; RELEASE occupies its old WIDTH slot's colour instead, since
+    // WIDTH moved to a per-layer knob on each pad - see FxChain's doc
+    // comment for why WIDTH left the shared macros in the first place).
     const juce::Colour macroAccents[] {
-        juce::Colour (0xfff5ae39),   // Attack - gold
-        juce::Colour (0xff2fb5d8),   // Filter - blue
-        juce::Colour (0xffed76b3),   // Width  - pink
-        juce::Colour (0xff5bbd74)    // Reverb - green
+        juce::Colour (0xfff5ae39),   // Attack  - gold
+        juce::Colour (0xffed76b3),   // Release - pink
+        juce::Colour (0xff2fb5d8),   // Filter  - blue
+        juce::Colour (0xff5bbd74)    // Reverb  - green
     };
+
+    // Each pad's own WIDTH knob (see LayerBase::setWidth()) shares this one
+    // neutral tan accent across all four layers - distinct from every layer
+    // accent and macro accent, so it reads as "the same control" wherever it
+    // appears rather than clashing with e.g. Bloom's pink layer accent.
+    const juce::Colour widthAccent = wordmarkGoldEnd;
 
     // Pitch / mod wheels share one neutral performance-control accent.
     const juce::Colour wheelAccent   { 0xfff5ae39 };

@@ -8,18 +8,21 @@ namespace horizon::ui
 {
 
 /**
-    One big rotary knob for one pad's volume - ROOT / CLEARING / EXPANSE /
-    BLOOM - with its small coloured status dot, caption, one-line poetic
-    subtitle and live percentage readout, matching the mockup exactly. Unlike
-    an earlier iteration of this plugin's GUI, there are no per-layer tone
-    knobs here: each pad's character is fixed by its own DSP, so volume is the
-    only control the pad needs.
+    One pad's controls - ROOT / CLEARING / EXPANSE / BLOOM - with its small
+    coloured status dot, caption, one-line poetic subtitle and live percentage
+    readout, matching the mockup exactly. Two rotary knobs live here: the
+    pad's own VOLUME (large, the pad's own layer accent colour) and its own
+    WIDTH (smaller, the shared neutral width accent - see
+    LayerBase::setWidth()), stacked in the card's control area. Beyond that,
+    there is no per-layer tone block: each pad's character is otherwise fixed
+    by its own DSP.
 */
 class PadKnob final : public juce::Component
 {
 public:
     PadKnob (HorizonPadAudioProcessor& processorToUse, int layerIndex,
-            juce::String caption, juce::String subtitle, const char* paramId);
+            juce::String caption, juce::String subtitle,
+            const char* volumeParamId, const char* widthParamId);
     ~PadKnob() override;
 
     void paint (juce::Graphics&) override;
@@ -31,8 +34,11 @@ private:
     const juce::String caption;
     const juce::String subtitle;
 
-    juce::Slider slider { juce::Slider::RotaryHorizontalVerticalDrag, juce::Slider::NoTextBox };
-    std::unique_ptr<juce::AudioProcessorValueTreeState::SliderAttachment> attachment;
+    juce::Slider volumeSlider { juce::Slider::RotaryHorizontalVerticalDrag, juce::Slider::NoTextBox };
+    std::unique_ptr<juce::AudioProcessorValueTreeState::SliderAttachment> volumeAttachment;
+
+    juce::Slider widthSlider { juce::Slider::RotaryHorizontalVerticalDrag, juce::Slider::NoTextBox };
+    std::unique_ptr<juce::AudioProcessorValueTreeState::SliderAttachment> widthAttachment;
 
     JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR (PadKnob)
 };

@@ -125,6 +125,7 @@ private:
 
     // Cached raw parameter pointers: no string lookups on the audio thread.
     std::array<std::atomic<float>*, (size_t) horizon::kNumLayers> volumeParams {};
+    std::array<std::atomic<float>*, (size_t) horizon::kNumLayers> widthParams {};
     std::array<std::atomic<float>*, (size_t) horizon::kNumGlobalParams> macroParams {};
 
     horizon::PerformanceState performanceState;
@@ -157,6 +158,7 @@ private:
     struct BufferSnapshot
     {
         std::array<std::atomic<float>, (size_t) horizon::kNumLayers> vols;
+        std::array<std::atomic<float>, (size_t) horizon::kNumLayers> widths;
         std::array<std::atomic<float>, (size_t) horizon::kNumGlobalParams> macros;
     };
 

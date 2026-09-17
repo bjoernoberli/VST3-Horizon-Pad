@@ -38,6 +38,14 @@ std::vector<UserPreset> UserPresetStore::load()
         preset.vols[2] = (float) child->getDoubleAttribute ("v2");
         preset.vols[3] = (float) child->getDoubleAttribute ("v3");
 
+        // Older saved presets have no per-layer width yet - default to 0.5
+        // (the struct's own default) rather than 0, so pre-existing presets
+        // don't suddenly go mono the first time they're loaded post-update.
+        preset.widths[0] = (float) child->getDoubleAttribute ("w0", 0.5);
+        preset.widths[1] = (float) child->getDoubleAttribute ("w1", 0.5);
+        preset.widths[2] = (float) child->getDoubleAttribute ("w2", 0.5);
+        preset.widths[3] = (float) child->getDoubleAttribute ("w3", 0.5);
+
         preset.macros[0] = (float) child->getDoubleAttribute ("m0");
         preset.macros[1] = (float) child->getDoubleAttribute ("m1");
         preset.macros[2] = (float) child->getDoubleAttribute ("m2");
@@ -65,6 +73,11 @@ void UserPresetStore::save (const std::vector<UserPreset>& presets)
         child->setAttribute ("v1", (double) preset.vols[1]);
         child->setAttribute ("v2", (double) preset.vols[2]);
         child->setAttribute ("v3", (double) preset.vols[3]);
+
+        child->setAttribute ("w0", (double) preset.widths[0]);
+        child->setAttribute ("w1", (double) preset.widths[1]);
+        child->setAttribute ("w2", (double) preset.widths[2]);
+        child->setAttribute ("w3", (double) preset.widths[3]);
 
         child->setAttribute ("m0", (double) preset.macros[0]);
         child->setAttribute ("m1", (double) preset.macros[1]);

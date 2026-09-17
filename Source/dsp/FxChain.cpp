@@ -9,9 +9,6 @@ void FxChain::prepare (double sampleRate, int maximumBlockSize)
 
     const juce::dsp::ProcessSpec monoSpec { sampleRate, (juce::uint32) juce::jmax (1, maximumBlockSize), 1 };
 
-    widthDelay.prepare (monoSpec);
-    widthDelay.setDelay (0.0f);
-
     reverb.prepare (monoSpec);
     reverbParams.roomSize = 0.7f;
     reverbParams.damping = 0.35f;
@@ -25,9 +22,7 @@ void FxChain::prepare (double sampleRate, int maximumBlockSize)
     wetStereo.setSize (1, juce::jmax (1, maximumBlockSize), false, true, false);
 
     const auto ramp = 0.05; // 50 ms
-    smoothedWidthSamples.reset (sampleRate, ramp);
     smoothedReverbSend.reset (sampleRate, ramp);
-    smoothedWidthSamples.setCurrentAndTargetValue ((float) kMaxWidthSamples);
     smoothedReverbSend.setCurrentAndTargetValue (0.28f);
 
     reset();
@@ -35,18 +30,14 @@ void FxChain::prepare (double sampleRate, int maximumBlockSize)
 
 void FxChain::reset()
 {
-    widthDelay.reset();
     reverb.reset();
     dryMono.clear();
     wetStereo.clear();
 }
 
-void FxChain::setParameters (float width, float reverbSend) noexcept
+void FxChain::setParameters (float reverbSend) noexcept
 {
-    width = juce::jlimit (0.0f, 1.0f, width);
     reverbSend = juce::jlimit (0.0f, 1.0f, reverbSend);
-
-    smoothedWidthSamples.setTargetValue (width * (float) kMaxWidthSamples);
     smoothedReverbSend.setTargetValue (reverbSend);
 }
 
@@ -59,10 +50,20 @@ void FxChain::process (juce::AudioBuffer<float>& buffer, int numSamples)
 
     numSamples = juce::jmin (numSamples, dryMono.getNumSamples());
 
-    // The layers upstream write identical L/R (each pad is a mono voice, as in
-    // the Faust source), so channel 0 is the authoritative dry mono sum.
+    auto* left  = buffer.getWritePointer (0);
+    auto* right = numChannels > 1 ? buffer.getWritePointer (1) : left;
+
+    // Each layer now has its own width, so left/right may genuinely differ by
+    // this point - the reverb send is still built from a mono sum (a stereo
+    // room send from two already-different channels would just smear the
+    // image), but the dry path below preserves left/right exactly as they
+    // arrived rather than rebuilding one from the other.
     auto* dry = dryMono.getWritePointer (0);
-    juce::FloatVectorOperations::copy (dry, buffer.getReadPointer (0), numSamples);
+    juce::FloatVectorOperations::copy (dry, left, numSamples);
+
+    if (right != left)
+        for (int n = 0; n < numSamples; ++n)
+            dry[n] = 0.5f * (dry[n] + right[n]);
 
     auto* wet = wetStereo.getWritePointer (0);
     juce::FloatVectorOperations::copy (wet, dry, numSamples);
@@ -73,12 +74,8 @@ void FxChain::process (juce::AudioBuffer<float>& buffer, int numSamples)
         reverb.process (ctx);
     }
 
-    auto* left  = buffer.getWritePointer (0);
-    auto* right = numChannels > 1 ? buffer.getWritePointer (1) : left;
-
     for (int n = 0; n < numSamples; ++n)
     {
-        const auto widthSamples = smoothedWidthSamples.getNextValue();
         const auto reverbSend = smoothedReverbSend.getNextValue();
         const auto wetSample = wet[n] * reverbSend;
 
@@ -91,12 +88,8 @@ void FxChain::process (juce::AudioBuffer<float>& buffer, int numSamples)
         // un-reverbed sound is unchanged.
         const auto dryLevel = 0.85f * (1.0f - 0.3f * reverbSend);
 
-        widthDelay.pushSample (0, dry[n]);
-        widthDelay.setDelay (widthSamples);
-        const auto delayed = widthDelay.popSample (0);
-
-        left[n]  = dry[n]  * dryLevel + wetSample;
-        right[n] = delayed * dryLevel + wetSample;
+        left[n]  = left[n]  * dryLevel + wetSample;
+        right[n] = right[n] * dryLevel + wetSample;
     }
 }
 

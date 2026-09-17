@@ -18,19 +18,30 @@ namespace horizon
     four global macros, so each layer's character is baked in rather than
     user-editable.
 
-    Two global macros reach every layer identically, set once per block by the
-    processor:
+    Three global macros reach every layer identically, set once per block by
+    the processor:
       * attackTimeScale     - ATTACK macro. 1.0 = the layer's own designed
                                attack time; <1 snappier, >1 slower. Multiplies
                                attack only, so each layer's relative timing
                                offset (part of what keeps the four pads from
                                all arriving at once) is preserved.
+      * releaseTimeScale    - RELEASE macro. 1.0 = the layer's own designed
+                               release time; <1 shorter, >1 longer. Multiplies
+                               release only, the same way attackTimeScale
+                               multiplies attack.
       * brightnessMultiplier - FILTER macro. 1.0 = the layer's own designed
                                cutoff curve; <1 darker, >1 brighter. Multiplies
                                whatever cutoff-over-time curve the layer already
                                computes from its envelope, rather than replacing
                                it, so the "opens with the envelope" shape from
                                the sound design survives at every macro setting.
+
+    Unlike those three, stereo width is set per layer, not globally - each
+    pad has its own WIDTH knob (see setWidth()). It is created with the same
+    short Haas-style delay-line split FxChain's old shared WIDTH macro used,
+    applied here (post-voice, post-tail) rather than after the four layers
+    are summed, so each pad can have its own spread instead of one shared
+    image for the whole mix.
 
     Performance state (pitch bend, mod wheel) also reaches every layer
     identically, set once per block:
@@ -65,6 +76,11 @@ public:
             v.active = false;
         }
 
+        widthDelay.prepare ({ newSampleRate, (juce::uint32) maxBlockSize, 1 });
+        widthDelay.setDelay (0.0f);
+        smoothedWidthSamples.reset (newSampleRate, 0.05);
+        smoothedWidthSamples.setCurrentAndTargetValue (0.0f);
+
         prepareLayer ({ newSampleRate, (juce::uint32) maxBlockSize, 2 });
     }
 
@@ -77,14 +93,23 @@ public:
         }
 
         scratch.clear();
+        widthDelay.reset();
         resetLayer();
     }
 
     /** Called from the audio thread, once per block. */
-    void setMacros (float newAttackTimeScale, float newBrightnessMultiplier) noexcept
+    void setMacros (float newAttackTimeScale, float newReleaseTimeScale, float newBrightnessMultiplier) noexcept
     {
         attackTimeScale = newAttackTimeScale;
+        releaseTimeScale = newReleaseTimeScale;
         brightnessMultiplier = newBrightnessMultiplier;
+    }
+
+    /** Called from the audio thread, once per block. 0 = mono, 1 = the same
+        fully-wide Haas split the old shared WIDTH macro used. */
+    void setWidth (float newWidth) noexcept
+    {
+        smoothedWidthSamples.setTargetValue (juce::jlimit (0.0f, 1.0f, newWidth) * (float) kMaxWidthSamples);
     }
 
     /** Called from the audio thread, once per block. */
@@ -106,7 +131,7 @@ public:
         p.attack  = juce::jmax (0.001f, attackSeconds() * attackTimeScale);
         p.decay   = decaySeconds();
         p.sustain = sustainLevel();
-        p.release = releaseSeconds();
+        p.release = juce::jmax (0.001f, releaseSeconds() * releaseTimeScale);
         v.env.setParameters (p);
         v.env.reset();
         v.env.noteOn();
@@ -153,6 +178,21 @@ public:
         }
 
         renderLayerTail (scratch, numSamples);
+
+        // --- Per-layer stereo width: covers voices and any tail effect (e.g.
+        // Airy Choir's shimmer bus) uniformly, since it runs after both.
+        {
+            auto* left = scratch.getWritePointer (0);
+            auto* right = scratch.getWritePointer (1);
+
+            for (int n = 0; n < numSamples; ++n)
+            {
+                const auto widthSamples = smoothedWidthSamples.getNextValue();
+                widthDelay.pushSample (0, left[n]);
+                widthDelay.setDelay (widthSamples);
+                right[n] = widthDelay.popSample (0);
+            }
+        }
 
         for (int ch = 0; ch < juce::jmin (2, target.getNumChannels()); ++ch)
             target.addFrom (ch, 0, scratch, ch, 0, numSamples);
@@ -235,9 +275,15 @@ protected:
 
     juce::AudioBuffer<float> scratch;
 
-    /** Set once per block by the processor from the ATTACK/FILTER macros. */
+    /** Set once per block by the processor from the ATTACK/RELEASE/FILTER macros. */
     float attackTimeScale = 1.0f;
+    float releaseTimeScale = 1.0f;
     float brightnessMultiplier = 1.0f;
+
+    /** This layer's own WIDTH knob - see setWidth() and render(). */
+    static constexpr int kMaxWidthSamples = 90;
+    juce::dsp::DelayLine<float, juce::dsp::DelayLineInterpolationTypes::Linear> widthDelay { kMaxWidthSamples + 4 };
+    juce::SmoothedValue<float> smoothedWidthSamples;
 
     /** Set once per block by the processor from MIDI/UI performance state. */
     float pitchBendSemitones = 0.0f;

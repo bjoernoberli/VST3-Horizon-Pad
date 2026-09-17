@@ -25,10 +25,10 @@ void MacrosPanel::setUpKnob (Knob& knob, const juce::String& caption, const char
 
 MacrosPanel::MacrosPanel (HorizonPadAudioProcessor& processor)
 {
-    setUpKnob (knobs[0], "ATTACK", ParamID::attackMacro, Palette::macroAccents[0], processor);
-    setUpKnob (knobs[1], "FILTER", ParamID::filterMacro, Palette::macroAccents[1], processor);
-    setUpKnob (knobs[2], "WIDTH",  ParamID::widthMacro,  Palette::macroAccents[2], processor);
-    setUpKnob (knobs[3], "REVERB", ParamID::reverbMacro, Palette::macroAccents[3], processor);
+    setUpKnob (knobs[0], "ATTACK",  ParamID::attackMacro,  Palette::macroAccents[0], processor);
+    setUpKnob (knobs[1], "RELEASE", ParamID::releaseMacro, Palette::macroAccents[1], processor);
+    setUpKnob (knobs[2], "FILTER",  ParamID::filterMacro,  Palette::macroAccents[2], processor);
+    setUpKnob (knobs[3], "REVERB",  ParamID::reverbMacro,  Palette::macroAccents[3], processor);
 }
 
 MacrosPanel::~MacrosPanel() = default;

@@ -25,9 +25,10 @@ namespace
         return std::pow (2.0f, (juce::jlimit (0.0f, 1.0f, macroValue) - 0.5f) * 2.0f);
     }
 
-    /** The eight (and only eight) host-automatable parameter IDs, in the
-        fixed order used everywhere a "vols then macros" array is needed:
-        Root, Clearing, Expanse, Bloom, Attack, Filter, Width, Reverb. */
+    /** The twelve (and only twelve) host-automatable parameter IDs, in the
+        fixed order used everywhere a "vols/widths/macros" array is needed:
+        Root, Clearing, Expanse, Bloom, then the same order for width, then
+        Attack, Release, Filter, Reverb. */
     const std::array<const char*, (size_t) kNumLayers>& volumeIds()
     {
         static const std::array<const char*, (size_t) kNumLayers> ids {
@@ -36,10 +37,18 @@ namespace
         return ids;
     }
 
+    const std::array<const char*, (size_t) kNumLayers>& widthIds()
+    {
+        static const std::array<const char*, (size_t) kNumLayers> ids {
+            ParamID::rootWidth, ParamID::clearingWidth, ParamID::expanseWidth, ParamID::bloomWidth
+        };
+        return ids;
+    }
+
     const std::array<const char*, (size_t) kNumGlobalParams>& macroIds()
     {
         static const std::array<const char*, (size_t) kNumGlobalParams> ids {
-            ParamID::attackMacro, ParamID::filterMacro, ParamID::widthMacro, ParamID::reverbMacro
+            ParamID::attackMacro, ParamID::releaseMacro, ParamID::filterMacro, ParamID::reverbMacro
         };
         return ids;
     }
@@ -65,15 +74,21 @@ juce::AudioProcessorValueTreeState::ParameterLayout HorizonPadAudioProcessor::cr
                 .withLabel ("%")));
     };
 
-    // The eight (and only eight) host-automatable parameters: four pad
-    // volumes, then four macros - matching the GUI's knob row left to right.
+    // The twelve (and only twelve) host-automatable parameters: four pad
+    // volumes, then four per-layer widths, then four macros - matching the
+    // GUI's knob row left to right (width lives inside each pad's own card,
+    // not the macros block).
     addPercent (ParamID::rootVolume,     "Root",     0.75f);
     addPercent (ParamID::clearingVolume, "Clearing", 0.30f);
     addPercent (ParamID::expanseVolume,  "Expanse",  0.15f);
     addPercent (ParamID::bloomVolume,    "Bloom",    0.25f);
+    addPercent (ParamID::rootWidth,      "Root Width",     0.50f);
+    addPercent (ParamID::clearingWidth,  "Clearing Width", 0.60f);
+    addPercent (ParamID::expanseWidth,   "Expanse Width",  0.70f);
+    addPercent (ParamID::bloomWidth,     "Bloom Width",    0.45f);
     addPercent (ParamID::attackMacro,    "Attack",   0.40f);
+    addPercent (ParamID::releaseMacro,   "Release",  0.40f);
     addPercent (ParamID::filterMacro,    "Filter",   0.30f);
-    addPercent (ParamID::widthMacro,     "Width",    0.40f);
     addPercent (ParamID::reverbMacro,    "Reverb",   0.20f);
 
     return layout;
@@ -91,6 +106,12 @@ HorizonPadAudioProcessor::HorizonPadAudioProcessor()
     {
         volumeParams[(size_t) i] = apvts.getRawParameterValue (volumeIds()[(size_t) i]);
         jassert (volumeParams[(size_t) i] != nullptr);
+    }
+
+    for (int i = 0; i < kNumLayers; ++i)
+    {
+        widthParams[(size_t) i] = apvts.getRawParameterValue (widthIds()[(size_t) i]);
+        jassert (widthParams[(size_t) i] != nullptr);
     }
 
     for (int i = 0; i < kNumGlobalParams; ++i)
@@ -112,6 +133,12 @@ HorizonPadAudioProcessor::HorizonPadAudioProcessor()
         buffers[1].vols[(size_t) i].store (volumeParams[(size_t) i]->load());
     }
 
+    for (int i = 0; i < kNumLayers; ++i)
+    {
+        buffers[0].widths[(size_t) i].store (widthParams[(size_t) i]->load());
+        buffers[1].widths[(size_t) i].store (widthParams[(size_t) i]->load());
+    }
+
     for (int i = 0; i < kNumGlobalParams; ++i)
     {
         buffers[0].macros[(size_t) i].store (macroParams[(size_t) i]->load());
@@ -124,6 +151,9 @@ HorizonPadAudioProcessor::HorizonPadAudioProcessor()
     for (auto* id : volumeIds())
         apvts.addParameterListener (id, this);
 
+    for (auto* id : widthIds())
+        apvts.addParameterListener (id, this);
+
     for (auto* id : macroIds())
         apvts.addParameterListener (id, this);
 
@@ -133,6 +163,9 @@ HorizonPadAudioProcessor::HorizonPadAudioProcessor()
 HorizonPadAudioProcessor::~HorizonPadAudioProcessor()
 {
     for (auto* id : volumeIds())
+        apvts.removeParameterListener (id, this);
+
+    for (auto* id : widthIds())
         apvts.removeParameterListener (id, this);
 
     for (auto* id : macroIds())
@@ -229,6 +262,9 @@ void HorizonPadAudioProcessor::applyPreset (const Preset& preset)
     for (int i = 0; i < kNumLayers; ++i)
         setParam (volumeIds()[(size_t) i], preset.volumes[(size_t) i]);
 
+    for (int i = 0; i < kNumLayers; ++i)
+        setParam (widthIds()[(size_t) i], preset.widths[(size_t) i]);
+
     for (int i = 0; i < kNumGlobalParams; ++i)
         setParam (macroIds()[(size_t) i], preset.macros[(size_t) i]);
 
@@ -251,6 +287,15 @@ void HorizonPadAudioProcessor::parameterChanged (const juce::String& parameterID
         if (parameterID == volumeIds()[(size_t) i])
         {
             buffer.vols[(size_t) i].store (newValue, std::memory_order_relaxed);
+            return;
+        }
+    }
+
+    for (int i = 0; i < kNumLayers; ++i)
+    {
+        if (parameterID == widthIds()[(size_t) i])
+        {
+            buffer.widths[(size_t) i].store (newValue, std::memory_order_relaxed);
             return;
         }
     }
@@ -285,6 +330,12 @@ void HorizonPadAudioProcessor::switchBuffer (int index)
             p->setValueNotifyingHost (p->convertTo0to1 (snapshot.vols[(size_t) i].load (std::memory_order_relaxed)));
     }
 
+    for (int i = 0; i < kNumLayers; ++i)
+    {
+        if (auto* p = apvts.getParameter (widthIds()[(size_t) i]))
+            p->setValueNotifyingHost (p->convertTo0to1 (snapshot.widths[(size_t) i].load (std::memory_order_relaxed)));
+    }
+
     for (int i = 0; i < kNumGlobalParams; ++i)
     {
         if (auto* p = apvts.getParameter (macroIds()[(size_t) i]))
@@ -305,6 +356,9 @@ void HorizonPadAudioProcessor::copyActiveBufferToOtherBuffer()
     for (int i = 0; i < kNumLayers; ++i)
         dest.vols[(size_t) i].store (source.vols[(size_t) i].load (std::memory_order_relaxed), std::memory_order_relaxed);
 
+    for (int i = 0; i < kNumLayers; ++i)
+        dest.widths[(size_t) i].store (source.widths[(size_t) i].load (std::memory_order_relaxed), std::memory_order_relaxed);
+
     for (int i = 0; i < kNumGlobalParams; ++i)
         dest.macros[(size_t) i].store (source.macros[(size_t) i].load (std::memory_order_relaxed), std::memory_order_relaxed);
 
@@ -319,6 +373,9 @@ void HorizonPadAudioProcessor::saveCurrentAsUserPreset (const juce::String& name
 
     for (int i = 0; i < kNumLayers; ++i)
         preset.vols[(size_t) i] = volumeParams[(size_t) i]->load (std::memory_order_relaxed);
+
+    for (int i = 0; i < kNumLayers; ++i)
+        preset.widths[(size_t) i] = widthParams[(size_t) i]->load (std::memory_order_relaxed);
 
     for (int i = 0; i < kNumGlobalParams; ++i)
         preset.macros[(size_t) i] = macroParams[(size_t) i]->load (std::memory_order_relaxed);
@@ -369,6 +426,9 @@ void HorizonPadAudioProcessor::applyUserPreset (int index)
 
     for (int i = 0; i < kNumLayers; ++i)
         setParam (volumeIds()[(size_t) i], preset.vols[(size_t) i]);
+
+    for (int i = 0; i < kNumLayers; ++i)
+        setParam (widthIds()[(size_t) i], preset.widths[(size_t) i]);
 
     for (int i = 0; i < kNumGlobalParams; ++i)
         setParam (macroIds()[(size_t) i], preset.macros[(size_t) i]);
@@ -553,20 +613,22 @@ void HorizonPadAudioProcessor::processBlock (juce::AudioBuffer<float>& buffer, j
         layerGain[(size_t) i].setTargetValue (volumeParams[(size_t) i]->load (std::memory_order_relaxed));
 
     const auto attackScale = macroMultiplier (macroParams[0]->load (std::memory_order_relaxed));
-    const auto brightnessMul = macroMultiplier (macroParams[1]->load (std::memory_order_relaxed));
-    const auto width = macroParams[2]->load (std::memory_order_relaxed);
+    const auto releaseScale = macroMultiplier (macroParams[1]->load (std::memory_order_relaxed));
+    const auto brightnessMul = macroMultiplier (macroParams[2]->load (std::memory_order_relaxed));
     const auto reverbSend = macroParams[3]->load (std::memory_order_relaxed);
 
     const auto pitchBend = performanceState.getPitchBendSemitones();
     const auto modAmount = performanceState.getModAmount();
 
-    for (auto* layer : layers)
+    for (int i = 0; i < kNumLayers; ++i)
     {
-        layer->setMacros (attackScale, brightnessMul);
+        auto* layer = layers[(size_t) i];
+        layer->setMacros (attackScale, releaseScale, brightnessMul);
         layer->setPerformance (pitchBend, modAmount);
+        layer->setWidth (widthParams[(size_t) i]->load (std::memory_order_relaxed));
     }
 
-    fxChain.setParameters (width, reverbSend);
+    fxChain.setParameters (reverbSend);
 
     // --- Render, splitting the block at MIDI event boundaries.
     int position = 0;
@@ -629,6 +691,9 @@ void HorizonPadAudioProcessor::getStateInformation (juce::MemoryBlock& destData)
         for (int i = 0; i < kNumLayers; ++i)
             bufferTree.setProperty ("v" + juce::String (i), buffers[(size_t) b].vols[(size_t) i].load (std::memory_order_relaxed), nullptr);
 
+        for (int i = 0; i < kNumLayers; ++i)
+            bufferTree.setProperty ("w" + juce::String (i), buffers[(size_t) b].widths[(size_t) i].load (std::memory_order_relaxed), nullptr);
+
         for (int i = 0; i < kNumGlobalParams; ++i)
             bufferTree.setProperty ("m" + juce::String (i), buffers[(size_t) b].macros[(size_t) i].load (std::memory_order_relaxed), nullptr);
 
@@ -684,6 +749,12 @@ void HorizonPadAudioProcessor::setStateInformation (const void* data, int sizeIn
         for (int i = 0; i < kNumLayers; ++i)
             buffers[(size_t) b].vols[(size_t) i].store ((float) bufferTree.getProperty ("v" + juce::String (i), 0.0), std::memory_order_relaxed);
 
+        // "w0".."w3" won't exist in state saved before per-layer width
+        // existed - default to 0.5 (the parameter's own default) rather than
+        // 0, so an old project doesn't suddenly go mono on reload.
+        for (int i = 0; i < kNumLayers; ++i)
+            buffers[(size_t) b].widths[(size_t) i].store ((float) bufferTree.getProperty ("w" + juce::String (i), 0.5), std::memory_order_relaxed);
+
         for (int i = 0; i < kNumGlobalParams; ++i)
             buffers[(size_t) b].macros[(size_t) i].store ((float) bufferTree.getProperty ("m" + juce::String (i), 0.0), std::memory_order_relaxed);
     }
@@ -696,6 +767,12 @@ void HorizonPadAudioProcessor::setStateInformation (const void* data, int sizeIn
         {
             buffers[0].vols[(size_t) i].store (volumeParams[(size_t) i]->load(), std::memory_order_relaxed);
             buffers[1].vols[(size_t) i].store (volumeParams[(size_t) i]->load(), std::memory_order_relaxed);
+        }
+
+        for (int i = 0; i < kNumLayers; ++i)
+        {
+            buffers[0].widths[(size_t) i].store (widthParams[(size_t) i]->load(), std::memory_order_relaxed);
+            buffers[1].widths[(size_t) i].store (widthParams[(size_t) i]->load(), std::memory_order_relaxed);
         }
 
         for (int i = 0; i < kNumGlobalParams; ++i)

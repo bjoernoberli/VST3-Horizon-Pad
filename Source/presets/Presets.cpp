@@ -9,11 +9,16 @@ namespace horizon
     Reading the numbers:
       volumes = { Root (Warm Foundation), Clearing (Analog Ensemble),
                   Expanse (Airy Choir), Bloom (Motion Pad) }
-      macros  = { Attack, Filter, Width, Reverb }
+      widths  = { Root, Clearing, Expanse, Bloom }
+      macros  = { Attack, Release, Filter, Reverb }
 
     Values are the starting points worked out for the VST3 handoff, matching
     each preset's name against the four pads' existing character - a first
-    pass for ear-tuning, not a final mix.
+    pass for ear-tuning, not a final mix. widths are seeded from what used to
+    be each preset's one shared WIDTH macro (applied uniformly to all four
+    layers here, since that's exactly what the old shared macro did to the
+    mix), and release mirrors attack - both are starting points for a real
+    sound-design pass, not deliberately tuned per layer yet.
 */
 
 static const std::vector<Preset>& buildPresets()
@@ -28,7 +33,8 @@ static const std::vector<Preset>& buildPresets()
             "Lagerfeuer",
             "Warm, close and grounded - the campfire pad.",
             { 0.75f, 0.30f, 0.15f, 0.25f },
-            { 0.40f, 0.30f, 0.40f, 0.20f }
+            { 0.40f, 0.40f, 0.40f, 0.40f },
+            { 0.40f, 0.40f, 0.30f, 0.20f }
         },
 
         // ------------------------------------------------------------------
@@ -45,7 +51,8 @@ static const std::vector<Preset>& buildPresets()
             juce::String (juce::CharPointer_UTF8 ("Alpengl\xc3\xbchen")),
             "Warm light spreading wide across the peaks.",
             { 0.45f, 0.65f, 0.55f, 0.35f },
-            { 0.60f, 0.65f, 0.80f, 0.45f }
+            { 0.80f, 0.80f, 0.80f, 0.80f },
+            { 0.60f, 0.60f, 0.65f, 0.45f }
         },
 
         // ------------------------------------------------------------------
@@ -56,7 +63,8 @@ static const std::vector<Preset>& buildPresets()
             "Morgentau",
             "Fresh and delicate, open but soft.",
             { 0.30f, 0.40f, 0.70f, 0.55f },
-            { 0.50f, 0.55f, 0.70f, 0.55f }
+            { 0.70f, 0.70f, 0.70f, 0.70f },
+            { 0.50f, 0.50f, 0.55f, 0.55f }
         },
 
         // ------------------------------------------------------------------
@@ -67,7 +75,8 @@ static const std::vector<Preset>& buildPresets()
             "Sternenzelt",
             "Vast and celestial - Expanse fills the whole sky.",
             { 0.15f, 0.15f, 0.90f, 0.25f },
-            { 0.75f, 0.80f, 1.00f, 0.75f }
+            { 1.00f, 1.00f, 1.00f, 1.00f },
+            { 0.75f, 0.75f, 0.80f, 0.75f }
         },
 
         // ------------------------------------------------------------------
@@ -78,7 +87,8 @@ static const std::vector<Preset>& buildPresets()
             "Talwind",
             "Movement and breeze - Bloom leads the way.",
             { 0.40f, 0.40f, 0.40f, 0.75f },
-            { 0.30f, 0.50f, 0.85f, 0.35f }
+            { 0.85f, 0.85f, 0.85f, 0.85f },
+            { 0.30f, 0.30f, 0.50f, 0.35f }
         }
     };
 
