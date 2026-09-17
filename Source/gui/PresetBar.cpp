@@ -39,7 +39,7 @@ void PresetBar::UserPresetPill::setActive (bool shouldBeActive)
 
 int PresetBar::UserPresetPill::preferredWidth() const
 {
-    return juce::jmax (70, name.length() * 8 + 28) + 22;
+    return juce::jmax (70, name.length() * 9 + 28) + 22;
 }
 
 void PresetBar::UserPresetPill::paint (juce::Graphics& g)
@@ -243,7 +243,7 @@ void PresetBar::resized()
 
     for (auto* b : presetButtons)
     {
-        const auto w = juce::jmax (70, b->getButtonText().length() * 8 + 28);
+        const auto w = juce::jmax (70, b->getButtonText().length() * 9 + 28);
         b->setBounds (r.removeFromLeft (w).reduced (2));
         r.removeFromLeft (10);
     }

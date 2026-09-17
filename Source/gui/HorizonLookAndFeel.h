@@ -15,17 +15,23 @@ namespace Palette
 {
     const juce::Colour background       { 0xff020306 };
 
-    // The one shared panel that is the whole plugin window: a warm gradient
-    // (near-black at the bottom to deep amber at the top), a thin border, a
-    // clipped mountain-skyline silhouette along the bottom, and a soft gold
-    // glow in the top-right corner. See drawHorizonPanel().
-    const juce::Colour panelGradientBottom { 0xff05070d };
-    const juce::Colour panelGradientLower  { 0xff060c13 };
-    const juce::Colour panelGradientUpper  { 0xff211300 };
-    const juce::Colour panelGradientTop    { 0xff311e00 };
+    // The one shared panel that is the whole plugin window: a sunset-sky
+    // gradient (pale, cool sage at the top of the window warming down to a
+    // glowing red-orange right behind the mountains), a thin border, a
+    // heavily blurred mountain silhouette along the bottom (soft dark waves
+    // rather than a crisp skyline), and a soft warm glow low and centred -
+    // like a low sun glowing behind the ridge.
+    // Colours are picked off a reference sunset-over-mountains photo the
+    // user supplied, darkened where needed (mainly the top stop) so the
+    // wordmark/labels drawn directly on the panel stay readable. See
+    // drawHorizonPanel().
+    const juce::Colour panelGradientBottom { 0xffcf4a1c };
+    const juce::Colour panelGradientLower  { 0xffb35a24 };
+    const juce::Colour panelGradientUpper  { 0xff8a6a3c };
+    const juce::Colour panelGradientTop    { 0xff4a4f43 };
     const juce::Colour panelBorder         { 0x99232933 };
     const juce::Colour skyline             { 0x8010141b };
-    const juce::Colour glow                { 0x29f5ae39 };
+    const juce::Colour glow                { 0x38f5b464 };
 
     // Grid-card chrome (PITCH/MOD/ROOT/CLEARING/EXPANSE/BLOOM/MACROS/OUTPUT).
     const juce::Colour cardBg           { 0xff10141b };
@@ -46,7 +52,10 @@ namespace Palette
     const juce::Colour textValue        { 0xffcaced4 }; // card value readouts
     const juce::Colour textDim          { 0xff7f8793 }; // captions, tagline, macro values
     const juce::Colour textFaint        { 0xff79818d }; // delete/copy/cancel/save-open text
-    const juce::Colour textFooter       { 0xff5d646f }; // footer strip text
+    const juce::Colour textFooter       { 0xffc9bfa9 }; // footer strip text - light, warm: the footer
+                                                          // strip sits directly on the panel's warm
+                                                          // bottom gradient (no card behind it), where
+                                                          // the old dark blue-grey lost most of its contrast
     const juce::Colour macroLabel       { 0xffb4b8be };
 
     const juce::Colour dividerColor     { 0x80282e38 };
@@ -95,6 +104,17 @@ namespace Palette
     const juce::Colour meterBg       { 0xff040609 };
     const juce::Colour meterFillLow  { 0xffb37903 };
     const juce::Colour meterFillHigh { 0xfffac547 };
+}
+
+/** The grid cards' (PITCH/MOD/ROOT/.../MACROS/OUTPUT) shared type sizes, in
+    one place so every card stays consistent - point sizes were enlarged
+    across the board from the original design handoff for readability. */
+namespace TypeScale
+{
+    constexpr float icon    = 26.0f;
+    constexpr float label   = 14.0f;
+    constexpr float caption = 12.5f;
+    constexpr float value   = 15.0f;
 }
 
 /** Shared typography helper; keeps every label on the same handful of type sizes. */
@@ -164,19 +184,20 @@ void drawPanel (juce::Graphics& g, juce::Rectangle<float> bounds,
                 juce::Colour fill = Palette::cardBg, float corner = 10.0f);
 
 /**
-    Paints the one shared panel that is the whole plugin window - gradient
-    fill, border, clipped mountain-skyline silhouette, and the top-right glow
-    - exactly matching the design handoff's panelStyle/skylineStyle/glowStyle.
-    Call once from the editor's paint(), behind every (transparent) child.
+    Paints the one shared panel that is the whole plugin window - a sunset
+    gradient fill, border, a heavily blurred mountain silhouette (soft dark
+    waves) along the bottom, and a low, centred glow behind it. Call once
+    from the editor's paint(), behind every (transparent) child.
 */
 void drawHorizonPanel (juce::Graphics& g, juce::Rectangle<float> bounds);
 
 /**
     The fixed vertical slot layout every grid card (PITCH, MOD, ROOT,
-    CLEARING, EXPANSE, BLOOM, MACROS, OUTPUT) shares, matching the design's
-    colCardStyle exactly: 18px/12px padding, then icon row (28px), label
-    (16px), caption (30px), a flexible control area, and a value readout
-    (18px), each separated by a 7px gap.
+    CLEARING, EXPANSE, BLOOM, MACROS, OUTPUT) shares: 16px/12px padding, then
+    icon row (30px), label (20px), caption (32px), a flexible control area,
+    and a value readout (22px), each separated by a 6px gap. Enlarged from
+    the original design handoff's tighter slots (18px/12px padding, 28/16/30/
+    18px rows, 7px gaps) to fit the bigger TypeScale type sizes above.
 */
 struct ColumnSlots
 {

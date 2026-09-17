@@ -8,27 +8,36 @@ namespace
 {
     struct SubKnobLayout
     {
-        juce::Rectangle<int> volLabel, volKnob, widthLabel, widthKnob, widthValue;
+        juce::Rectangle<int> volLabel, volKnob, volValue, widthLabel, widthKnob, widthValue;
+        int dividerY = 0;
     };
 
-    /** Splits a PadKnob's control area into the two stacked knobs (VOL on
-        top, WIDTH below) and their small labels/readout. */
-    SubKnobLayout computeSubKnobLayout (juce::Rectangle<int> control)
+    /** Splits a PadKnob's full control area (control slot + value slot
+        combined - see PadKnob::resized()/paint() - since neither knob uses
+        the shared row-aligned value slot other cards share) into VOLUME
+        (label, knob, then its own value directly beneath - the primary,
+        emphasised control) and, below a divider, WIDTH (label, a smaller
+        knob, then its own smaller value - secondary). */
+    SubKnobLayout computeSubKnobLayout (juce::Rectangle<int> area)
     {
         SubKnobLayout s;
 
-        control.removeFromTop (8);
-        s.volLabel = control.removeFromTop (11);
-        control.removeFromTop (4);
-        s.volKnob = control.removeFromTop (56).withSizeKeepingCentre (56, 56);
+        area.removeFromTop (4);
+        s.volLabel = area.removeFromTop (14);
+        area.removeFromTop (4);
+        s.volKnob = area.removeFromTop (78).withSizeKeepingCentre (78, 78);
+        area.removeFromTop (5);
+        s.volValue = area.removeFromTop (22);
 
-        control.removeFromTop (8);
-        s.widthLabel = control.removeFromTop (11);
-        control.removeFromTop (3);
-        s.widthKnob = control.removeFromTop (36).withSizeKeepingCentre (36, 36);
+        area.removeFromTop (5);
+        s.dividerY = area.getY();
+        area.removeFromTop (5);
 
-        control.removeFromTop (4);
-        s.widthValue = control.removeFromTop (12);
+        s.widthLabel = area.removeFromTop (12);
+        area.removeFromTop (4);
+        s.widthKnob = area.removeFromTop (42).withSizeKeepingCentre (42, 42);
+        area.removeFromTop (4);
+        s.widthValue = area.removeFromTop (16);
 
         return s;
     }
@@ -72,7 +81,12 @@ PadKnob::~PadKnob() = default;
 void PadKnob::resized()
 {
     const auto slots = computeColumnSlots (getLocalBounds());
-    const auto sub = computeSubKnobLayout (slots.control);
+
+    // Neither knob here uses the shared row-aligned value slot other cards
+    // put their one readout in (VOL's value sits right under its own knob
+    // instead, WIDTH's under its own) - reclaim that space for the two
+    // knobs' extra room rather than leaving it blank.
+    const auto sub = computeSubKnobLayout (slots.control.getUnion (slots.value));
 
     volumeSlider.setBounds (sub.volKnob);
     widthSlider.setBounds (sub.widthKnob);
@@ -83,19 +97,20 @@ void PadKnob::paint (juce::Graphics& g)
     drawColumnCard (g, getLocalBounds().toFloat());
 
     const auto slots = computeColumnSlots (getLocalBounds());
-    const auto sub = computeSubKnobLayout (slots.control);
+    const auto fullControl = slots.control.getUnion (slots.value);
+    const auto sub = computeSubKnobLayout (fullControl);
 
     // --- Status dot: lit (with a glow) once the pad is audible, matching the
     // design's dotStyle threshold (vol > 0.04).
     {
         const auto lit = volumeSlider.getValue() > 0.04;
-        const auto dotSize = 14.0f;
+        const auto dotSize = 17.0f;
         auto dot = juce::Rectangle<float> (dotSize, dotSize).withCentre (slots.icon.toFloat().getCentre());
 
         if (lit)
         {
             g.setColour (accent.withAlpha (0.35f));
-            g.fillEllipse (dot.expanded (5.0f));
+            g.fillEllipse (dot.expanded (6.0f));
         }
 
         g.setColour (lit ? accent : Palette::dotUnlit);
@@ -103,31 +118,38 @@ void PadKnob::paint (juce::Graphics& g)
     }
 
     g.setColour (Palette::textKnobLabel);
-    g.setFont (labelFont (11.5f, true));
+    g.setFont (labelFont (TypeScale::label, true));
     g.drawText (caption, slots.label, juce::Justification::centred);
 
     g.setColour (Palette::textDim);
-    g.setFont (labelFont (10.5f).italicised());
+    g.setFont (labelFont (TypeScale::caption).italicised());
     g.drawFittedText (subtitle, slots.caption, juce::Justification::centred, 2);
 
-    // --- Tiny VOL/WIDTH labels, disambiguating the two stacked knobs.
+    // --- VOL: label, then (drawn via the slider itself) its knob, then its
+    // own value directly beneath it - the primary, emphasised readout.
     g.setColour (Palette::macroLabel);
-    g.setFont (labelFont (8.5f, true));
+    g.setFont (labelFont (11.0f, true));
     g.drawText ("VOL", sub.volLabel, juce::Justification::centred);
+
+    g.setColour (Palette::textValue);
+    g.setFont (labelFont (17.0f, true));
+    g.drawText (juce::String (juce::roundToInt (volumeSlider.getValue() * 100.0)) + "%",
+               sub.volValue, juce::Justification::centred);
+
+    // --- A thin divider separating the primary VOL control from the
+    // secondary WIDTH control below it.
+    g.setColour (Palette::dividerColor);
+    g.fillRect (sub.widthLabel.withY (sub.dividerY).withHeight (1));
+
+    // --- WIDTH: the same label/knob/value grouping, smaller throughout.
+    g.setColour (Palette::macroLabel);
+    g.setFont (labelFont (10.0f, true));
     g.drawText ("WIDTH", sub.widthLabel, juce::Justification::centred);
 
-    // --- WIDTH's own small value readout, next to its knob.
     g.setColour (Palette::textDim);
-    g.setFont (labelFont (9.5f));
+    g.setFont (labelFont (11.0f));
     g.drawText (juce::String (juce::roundToInt (widthSlider.getValue() * 100.0)) + "%",
                sub.widthValue, juce::Justification::centred);
-
-    // --- VOL's value readout, at the card's fixed bottom slot (unchanged
-    // position, so the card's overall rhythm matches every other column).
-    g.setColour (Palette::textValue);
-    g.setFont (labelFont (12.0f, true));
-    g.drawText (juce::String (juce::roundToInt (volumeSlider.getValue() * 100.0)) + "%",
-               slots.value, juce::Justification::centred);
 }
 
 } // namespace horizon::ui

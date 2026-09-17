@@ -33,7 +33,7 @@ void TitleBanner::paint (juce::Graphics& g)
     auto wordmarkArea = r.removeFromTop (46.0f);
     {
         g.setColour (Palette::gold);
-        g.setFont (titleFont (32.0f));
+        g.setFont (titleFont (36.0f));
         g.drawText ("Horizon Pad", wordmarkArea, juce::Justification::centred);
     }
 
@@ -72,12 +72,12 @@ void TitleBanner::paint (juce::Graphics& g)
         g.drawLine (1.0f, 33.5f, 45.0f, 33.5f, 1.5f);
     }
 
-    r.removeFromTop (10.0f);
+    r.removeFromTop (8.0f);
 
     // --- Tagline.
-    auto tagArea = r.removeFromTop (20.0f);
+    auto tagArea = r.removeFromTop (22.0f);
     g.setColour (Palette::textDim);
-    g.setFont (labelFont (12.5f));
+    g.setFont (labelFont (14.0f));
     // Split after each \xNN escape (as separate literals) so the compiler's
     // greedy hex-escape parsing can't swallow the following letters (e.g.
     // "\xa4be" would otherwise be read as one 4-digit escape, not \xa4 + "be").

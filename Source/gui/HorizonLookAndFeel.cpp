@@ -27,7 +27,7 @@ juce::Font HorizonLookAndFeel::getLabelFont (juce::Label& label)
 
 juce::Font HorizonLookAndFeel::getTextButtonFont (juce::TextButton&, int buttonHeight)
 {
-    return labelFont (juce::jlimit (9.0f, 15.0f, (float) buttonHeight * 0.5f), true);
+    return labelFont (juce::jlimit (10.0f, 17.0f, (float) buttonHeight * 0.5f), true);
 }
 
 void HorizonLookAndFeel::drawButtonBackground (juce::Graphics& g, juce::Button& button,
@@ -192,6 +192,7 @@ void drawPanel (juce::Graphics& g, juce::Rectangle<float> bounds, juce::Colour f
 void drawHorizonPanel (juce::Graphics& g, juce::Rectangle<float> bounds)
 {
     constexpr float corner = 24.0f;
+    const auto windowBottom = bounds.getBottom(); // bounds gets shrunk below; keep the original edge
 
     juce::Path panelPath;
     panelPath.addRoundedRectangle (bounds, corner);
@@ -200,53 +201,85 @@ void drawHorizonPanel (juce::Graphics& g, juce::Rectangle<float> bounds)
         juce::Graphics::ScopedSaveState save (g);
         g.reduceClipRegion (panelPath);
 
-        // --- Gradient fill: near-black at the bottom rising to deep amber
-        // at the top, matching panelStyle's four gradient stops exactly.
-        juce::ColourGradient grad (Palette::panelGradientBottom, bounds.getX(), bounds.getBottom(),
-                                   Palette::panelGradientTop, bounds.getX(), bounds.getY(), false);
-        grad.addColour (0.45, Palette::panelGradientLower);
-        grad.addColour (0.78, Palette::panelGradientUpper);
+        // --- Gradient fill: pale, cool sage at the top of the window
+        // warming down to a glowing red-orange at the bottom, matching a
+        // sunset-over-mountains reference photo's own top-to-bottom
+        // progression (see the Palette::panelGradient* doc comment).
+        juce::ColourGradient grad (Palette::panelGradientTop, bounds.getX(), bounds.getY(),
+                                   Palette::panelGradientBottom, bounds.getX(), bounds.getBottom(), false);
+        grad.addColour (0.55, Palette::panelGradientUpper);
+        grad.addColour (0.82, Palette::panelGradientLower);
         g.setGradientFill (grad);
         g.fillRect (bounds);
 
-        // --- Mountain-skyline silhouette along the bottom (fixed jagged
-        // polygon, matching skylineStyle's clip-path points exactly).
+        // --- Soft warm glow, low and centred - a low sun glowing just
+        // behind the ridge, drawn before the skyline so the mountains read
+        // as a dark silhouette cut into the glow (as in the reference photo).
+        {
+            const auto glowDiameter = 640.0f;
+            const auto glowCentre = juce::Point<float> (bounds.getCentreX(), windowBottom - 40.0f);
+
+            juce::ColourGradient radial (Palette::glow, glowCentre.x, glowCentre.y,
+                                        Palette::glow.withAlpha (0.0f), glowCentre.x, glowCentre.y - glowDiameter * 0.5f, true);
+            g.setGradientFill (radial);
+            g.fillEllipse (juce::Rectangle<float> (glowDiameter, glowDiameter).withCentre (glowCentre));
+        }
+
+        // --- Soft dark waves along the bottom: the same jagged mountain
+        // silhouette points, heavily gaussian-blurred so the peaks read as
+        // soft, indistinct swells rather than a crisp skyline. Rendered to
+        // an offscreen image and blurred once, then cached (the panel is a
+        // fixed size and the shape never changes), since a full-kernel
+        // convolution every repaint would be wasteful.
         {
             const auto skylineHeight = juce::jmin (120.0f, bounds.getHeight() * 0.4f);
             auto skylineArea = bounds.removeFromBottom (skylineHeight);
-            const auto w = skylineArea.getWidth();
-            const auto top = skylineArea.getY();
-            const auto h = skylineArea.getHeight();
+            const auto areaInt = skylineArea.getSmallestIntegerContainer();
 
-            const float pointsPct[][2] {
-                { 0.0f, 100.0f }, { 0.0f, 78.0f }, { 9.0f, 60.0f }, { 18.0f, 82.0f },
-                { 29.0f, 55.0f }, { 40.0f, 84.0f }, { 52.0f, 58.0f }, { 64.0f, 86.0f },
-                { 76.0f, 56.0f }, { 88.0f, 80.0f }, { 100.0f, 62.0f }, { 100.0f, 100.0f },
-            };
+            static juce::Image blurredWaves;
+            static juce::Rectangle<int> cachedArea;
+            constexpr int blurMargin = 40; // headroom so the blur can feather upward without a hard cutoff
 
-            juce::Path skyline;
-            skyline.startNewSubPath (skylineArea.getX() + pointsPct[0][0] * 0.01f * w,
-                                     top + pointsPct[0][1] * 0.01f * h);
+            if (blurredWaves.isNull() || cachedArea != areaInt)
+            {
+                cachedArea = areaInt;
 
-            for (auto& p : pointsPct)
-                skyline.lineTo (skylineArea.getX() + p[0] * 0.01f * w, top + p[1] * 0.01f * h);
+                const auto imgW = juce::jmax (1, areaInt.getWidth());
+                const auto imgH = areaInt.getHeight() + blurMargin;
 
-            skyline.closeSubPath();
+                juce::Image raw (juce::Image::ARGB, imgW, imgH, true);
+                {
+                    juce::Graphics ig (raw);
+                    const auto w = (float) imgW;
+                    const auto h = (float) areaInt.getHeight();
+                    const auto top = (float) blurMargin;
 
-            g.setColour (Palette::skyline);
-            g.fillPath (skyline);
-        }
+                    const float pointsPct[][2] {
+                        { 0.0f, 100.0f }, { 0.0f, 78.0f }, { 9.0f, 60.0f }, { 18.0f, 82.0f },
+                        { 29.0f, 55.0f }, { 40.0f, 84.0f }, { 52.0f, 58.0f }, { 64.0f, 86.0f },
+                        { 76.0f, 56.0f }, { 88.0f, 80.0f }, { 100.0f, 62.0f }, { 100.0f, 100.0f },
+                    };
 
-        // --- Soft gold glow, top-right corner (radial-gradient(circle, gold/0.16, transparent 70%)).
-        {
-            const auto glowDiameter = 420.0f;
-            const auto glowCentre = juce::Point<float> (bounds.getRight() - 100.0f + glowDiameter * 0.5f,
-                                                        bounds.getY() - 140.0f + glowDiameter * 0.5f);
+                    juce::Path skyline;
+                    skyline.startNewSubPath (pointsPct[0][0] * 0.01f * w, top + pointsPct[0][1] * 0.01f * h);
 
-            juce::ColourGradient radial (Palette::glow, glowCentre.x, glowCentre.y,
-                                        Palette::glow.withAlpha (0.0f), glowCentre.x, glowCentre.y - glowDiameter * 0.35f, true);
-            g.setGradientFill (radial);
-            g.fillEllipse (juce::Rectangle<float> (glowDiameter, glowDiameter).withCentre (glowCentre));
+                    for (auto& p : pointsPct)
+                        skyline.lineTo (p[0] * 0.01f * w, top + p[1] * 0.01f * h);
+
+                    skyline.closeSubPath();
+
+                    ig.setColour (Palette::skyline.withAlpha (0.8f)); // blur softens the apparent density, so start denser
+                    ig.fillPath (skyline);
+                }
+
+                juce::ImageConvolutionKernel kernel (33);
+                kernel.createGaussianBlur (14.0f);
+
+                blurredWaves = juce::Image (juce::Image::ARGB, imgW, imgH, true);
+                kernel.applyToImage (blurredWaves, raw, raw.getBounds());
+            }
+
+            g.drawImageAt (blurredWaves, areaInt.getX(), areaInt.getY() - blurMargin);
         }
     }
 
@@ -256,17 +289,17 @@ void drawHorizonPanel (juce::Graphics& g, juce::Rectangle<float> bounds)
 
 ColumnSlots computeColumnSlots (juce::Rectangle<int> cardBounds)
 {
-    auto r = cardBounds.reduced (12, 18);
+    auto r = cardBounds.reduced (12, 16);
 
     ColumnSlots slots;
-    slots.icon = r.removeFromTop (28);
-    r.removeFromTop (7);
-    slots.label = r.removeFromTop (16);
-    r.removeFromTop (7);
-    slots.caption = r.removeFromTop (30);
-    r.removeFromTop (7);
-    slots.value = r.removeFromBottom (18);
-    r.removeFromBottom (7);
+    slots.icon = r.removeFromTop (30);
+    r.removeFromTop (6);
+    slots.label = r.removeFromTop (20);
+    r.removeFromTop (6);
+    slots.caption = r.removeFromTop (32);
+    r.removeFromTop (6);
+    slots.value = r.removeFromBottom (22);
+    r.removeFromBottom (6);
     slots.control = r;
 
     return slots;

@@ -83,15 +83,15 @@ void WheelSlider::paint (juce::Graphics& g)
     const auto slots = computeColumnSlots (getLocalBounds());
 
     g.setColour (Palette::iconGlyph);
-    g.setFont (juce::Font (juce::FontOptions().withHeight (20.0f)));
+    g.setFont (juce::Font (juce::FontOptions().withHeight (TypeScale::icon)));
     g.drawText (glyphFor (kind), slots.icon, juce::Justification::centred);
 
     g.setColour (Palette::textKnobLabel);
-    g.setFont (labelFont (11.5f, true));
+    g.setFont (labelFont (TypeScale::label, true));
     g.drawText (caption, slots.label, juce::Justification::centred);
 
     g.setColour (Palette::textDim);
-    g.setFont (labelFont (10.5f).italicised());
+    g.setFont (labelFont (TypeScale::caption).italicised());
     g.drawFittedText (subtitle, slots.caption, juce::Justification::centred, 2);
 
     juce::String valueText;
@@ -102,7 +102,7 @@ void WheelSlider::paint (juce::Graphics& g)
         valueText = juce::String (juce::roundToInt (slider.getValue() * 100.0)) + "%";
 
     g.setColour (Palette::textValue);
-    g.setFont (labelFont (12.0f, true));
+    g.setFont (labelFont (TypeScale::value, true));
     g.drawText (valueText, slots.value, juce::Justification::centred);
 }
 

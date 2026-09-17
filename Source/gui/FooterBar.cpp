@@ -28,7 +28,7 @@ void FooterBar::paint (juce::Graphics& g)
     auto r = bounds.reduced (0.0f, 4.0f).toNearestInt();
 
     g.setColour (Palette::textFooter);
-    g.setFont (labelFont (10.5f, true));
+    g.setFont (labelFont (12.5f, true));
     g.drawText ("HORIZON PAD " + juce::String::fromUTF8 ("\xc2\xb7") + " VST3",
                r, juce::Justification::centredLeft);
 

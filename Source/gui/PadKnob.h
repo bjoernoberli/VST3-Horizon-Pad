@@ -10,12 +10,14 @@ namespace horizon::ui
 /**
     One pad's controls - ROOT / CLEARING / EXPANSE / BLOOM - with its small
     coloured status dot, caption, one-line poetic subtitle and live percentage
-    readout, matching the mockup exactly. Two rotary knobs live here: the
-    pad's own VOLUME (large, the pad's own layer accent colour) and its own
-    WIDTH (smaller, the shared neutral width accent - see
-    LayerBase::setWidth()), stacked in the card's control area. Beyond that,
-    there is no per-layer tone block: each pad's character is otherwise fixed
-    by its own DSP.
+    readout. Two rotary knobs live here, grouped so each knob sits directly
+    above its own value readout - no other control wedged in between: the
+    pad's own VOLUME (large, the primary control, the pad's own layer accent
+    colour, with its value directly beneath it) and, below a thin divider,
+    its own WIDTH (smaller, secondary, the shared neutral width accent - see
+    LayerBase::setWidth() - with its own smaller value beneath it in turn).
+    Beyond that, there is no per-layer tone block: each pad's character is
+    otherwise fixed by its own DSP.
 */
 class PadKnob final : public juce::Component
 {

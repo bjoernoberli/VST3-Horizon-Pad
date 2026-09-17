@@ -45,9 +45,9 @@ void MacrosPanel::resized()
     {
         auto cell = juce::Rectangle<int> (r.getX() + (i % 2) * colWidth, r.getY() + (i / 2) * rowHeight,
                                           colWidth, rowHeight);
-        cell.removeFromTop (14);   // macro label, painted
-        cell.removeFromBottom (14); // percentage, painted
-        const auto size = juce::jmin (cell.getWidth(), cell.getHeight(), 44);
+        cell.removeFromTop (16);   // macro label, painted
+        cell.removeFromBottom (16); // percentage, painted
+        const auto size = juce::jmin (cell.getWidth(), cell.getHeight(), 48);
         knobs[(size_t) i].slider.setBounds (cell.withSizeKeepingCentre (size, size));
     }
 }
@@ -59,15 +59,15 @@ void MacrosPanel::paint (juce::Graphics& g)
     const auto slots = computeColumnSlots (getLocalBounds());
 
     g.setColour (Palette::iconGlyph);
-    g.setFont (juce::Font (juce::FontOptions().withHeight (20.0f)));
+    g.setFont (juce::Font (juce::FontOptions().withHeight (TypeScale::icon)));
     g.drawText (juce::String::fromUTF8 ("\xe2\x97\x8d"), slots.icon, juce::Justification::centred); // "◍"
 
     g.setColour (Palette::textKnobLabel);
-    g.setFont (labelFont (11.5f, true));
+    g.setFont (labelFont (TypeScale::label, true));
     g.drawText ("MACROS", slots.label, juce::Justification::centred);
 
     g.setColour (Palette::textDim);
-    g.setFont (labelFont (10.5f).italicised());
+    g.setFont (labelFont (TypeScale::caption).italicised());
     g.drawFittedText ("shape the air", slots.caption, juce::Justification::centred, 2);
 
     auto r = slots.control;
@@ -78,15 +78,15 @@ void MacrosPanel::paint (juce::Graphics& g)
     {
         auto cell = juce::Rectangle<int> (r.getX() + (i % 2) * colWidth, r.getY() + (i / 2) * rowHeight,
                                           colWidth, rowHeight);
-        auto labelArea = cell.removeFromTop (14);
-        auto valueArea = cell.removeFromBottom (14);
+        auto labelArea = cell.removeFromTop (16);
+        auto valueArea = cell.removeFromBottom (16);
 
         g.setColour (Palette::macroLabel);
-        g.setFont (labelFont (9.5f, true));
+        g.setFont (labelFont (11.0f, true));
         g.drawText (knobs[(size_t) i].caption, labelArea, juce::Justification::centred);
 
         g.setColour (Palette::textDim);
-        g.setFont (labelFont (10.0f));
+        g.setFont (labelFont (12.0f));
         g.drawText (juce::String (juce::roundToInt (knobs[(size_t) i].slider.getValue() * 100.0)) + "%",
                     valueArea, juce::Justification::centred);
     }
