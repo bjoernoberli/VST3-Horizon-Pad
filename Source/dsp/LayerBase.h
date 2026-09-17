@@ -43,6 +43,14 @@ namespace horizon
     are summed, so each pad can have its own spread instead of one shared
     image for the whole mix.
 
+    A pure one-channel delay always localises toward the UN-delayed side (the
+    precedence effect), so which channel gets delayed matters: if every layer
+    delayed the same side, the whole mix would pull that way regardless of
+    each pad's own width setting. setWidthLeadChannel() lets the processor
+    alternate this per layer (see its call site in PluginProcessor's
+    constructor) so the four pads' pulls roughly cancel out across the mix
+    instead of stacking.
+
     Performance state (pitch bend, mod wheel) also reaches every layer
     identically, set once per block:
       * pitchBendSemitones  - added to every voice's frequency this block.
@@ -110,6 +118,16 @@ public:
     void setWidth (float newWidth) noexcept
     {
         smoothedWidthSamples.setTargetValue (juce::jlimit (0.0f, 1.0f, newWidth) * (float) kMaxWidthSamples);
+    }
+
+    /** Not audio-thread-critical - call once, e.g. from prepareToPlay() or
+        the constructor, not per block. Chooses which channel this layer's
+        WIDTH delay is applied to: false (default) delays right, matching the
+        original behaviour; true delays left instead. See the class doc
+        comment above for why the processor alternates this per layer. */
+    void setWidthLeadChannel (bool newDelayLeftInstead) noexcept
+    {
+        delayLeftChannel = newDelayLeftInstead;
     }
 
     /** Called from the audio thread, once per block. */
@@ -181,16 +199,22 @@ public:
 
         // --- Per-layer stereo width: covers voices and any tail effect (e.g.
         // Airy Choir's shimmer bus) uniformly, since it runs after both.
+        // Which channel is the delayed one depends on delayLeftChannel (see
+        // setWidthLeadChannel()) - left and right are bit-identical at this
+        // point in every layer, so it doesn't matter which one is read as
+        // the delay line's source.
         {
             auto* left = scratch.getWritePointer (0);
             auto* right = scratch.getWritePointer (1);
+            auto* source = delayLeftChannel ? right : left;
+            auto* delayed = delayLeftChannel ? left : right;
 
             for (int n = 0; n < numSamples; ++n)
             {
                 const auto widthSamples = smoothedWidthSamples.getNextValue();
-                widthDelay.pushSample (0, left[n]);
+                widthDelay.pushSample (0, source[n]);
                 widthDelay.setDelay (widthSamples);
-                right[n] = widthDelay.popSample (0);
+                delayed[n] = widthDelay.popSample (0);
             }
         }
 
@@ -284,6 +308,7 @@ protected:
     static constexpr int kMaxWidthSamples = 90;
     juce::dsp::DelayLine<float, juce::dsp::DelayLineInterpolationTypes::Linear> widthDelay { kMaxWidthSamples + 4 };
     juce::SmoothedValue<float> smoothedWidthSamples;
+    bool delayLeftChannel = false;
 
     /** Set once per block by the processor from MIDI/UI performance state. */
     float pitchBendSemitones = 0.0f;

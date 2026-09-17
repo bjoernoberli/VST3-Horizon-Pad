@@ -140,6 +140,13 @@ HorizonPadAudioProcessor::HorizonPadAudioProcessor()
 {
     layers = { &warmFoundation, &analogEnsemble, &airyChoir, &motionPad };
 
+    // Alternate which channel each layer's WIDTH delay lands on (see
+    // LayerBase::setWidthLeadChannel()'s doc comment) so the four layers'
+    // precedence-effect pulls roughly cancel across the mix instead of every
+    // layer pulling the same way.
+    for (int i = 0; i < kNumLayers; ++i)
+        layers[(size_t) i]->setWidthLeadChannel (i % 2 == 1);
+
     for (int i = 0; i < kNumLayers; ++i)
     {
         volumeParams[(size_t) i] = apvts.getRawParameterValue (volumeIds()[(size_t) i]);
