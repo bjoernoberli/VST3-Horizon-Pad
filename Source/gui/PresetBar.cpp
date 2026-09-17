@@ -65,6 +65,11 @@ void PresetBar::UserPresetPill::resized()
 PresetBar::PresetBar (HorizonPadAudioProcessor& processorToUse)
     : processor (processorToUse)
 {
+    presetViewport.setViewedComponent (&presetScrollContent, false);
+    presetViewport.setScrollBarsShown (false, false);
+    presetViewport.setScrollOnDragEnabled (true);
+    addAndMakeVisible (presetViewport);
+
     const auto& presets = processor.getPresets();
 
     for (int i = 0; i < (int) presets.size(); ++i)
@@ -72,21 +77,25 @@ PresetBar::PresetBar (HorizonPadAudioProcessor& processorToUse)
         auto* b = presetButtons.add (new juce::TextButton (presets[(size_t) i].name));
         b->setClickingTogglesState (false);
         b->onClick = [this, i] { processor.setCurrentProgram (i); refreshFromProcessor(); };
-        addAndMakeVisible (b);
+        presetScrollContent.addAndMakeVisible (b);
     }
 
     saveButton.setClickingTogglesState (false);
     saveButton.getProperties().set ("dashedBorder", true);
     saveButton.setColour (juce::TextButton::buttonColourId, juce::Colours::transparentBlack);
-    saveButton.setColour (juce::TextButton::textColourOffId, Palette::textFaint);
+    saveButton.setColour (juce::TextButton::textColourOffId, Palette::textKnobLabel);
     saveButton.onClick = [this] { beginSavingNewPreset(); };
     addAndMakeVisible (saveButton);
 
     saveNameEditor.setSelectAllWhenFocused (true);
-    saveNameEditor.setColour (juce::TextEditor::backgroundColourId, Palette::saveInputBg);
+    // Background/outline drawn by PresetBar::paint() instead (a rounded
+    // pill, matching every other geometry here) - JUCE's own TextEditor
+    // outline is a plain square-cornered rectangle.
+    saveNameEditor.setColour (juce::TextEditor::backgroundColourId, juce::Colours::transparentBlack);
+    saveNameEditor.setColour (juce::TextEditor::outlineColourId, juce::Colours::transparentBlack);
+    saveNameEditor.setColour (juce::TextEditor::focusedOutlineColourId, juce::Colours::transparentBlack);
     saveNameEditor.setColour (juce::TextEditor::textColourId, Palette::text);
-    saveNameEditor.setColour (juce::TextEditor::outlineColourId, Palette::gold);
-    saveNameEditor.setColour (juce::TextEditor::focusedOutlineColourId, Palette::gold);
+    saveNameEditor.setFont (juce::Font (juce::FontOptions().withHeight (14.0f)));
     saveNameEditor.setJustification (juce::Justification::centredLeft);
     saveNameEditor.setTextToShowWhenEmpty ("Preset name", Palette::textFaint);
     saveNameEditor.onReturnKey = [this] { commitSavingNewPreset(); };
@@ -126,7 +135,31 @@ PresetBar::PresetBar (HorizonPadAudioProcessor& processorToUse)
     swapButton.setColour (juce::TextButton::buttonColourId, juce::Colours::transparentBlack);
     swapButton.setColour (juce::TextButton::textColourOffId, Palette::textFaint);
     swapButton.setTooltip ("Copy the active slot onto the other one");
-    swapButton.onClick = [this] { processor.copyActiveBufferToOtherBuffer(); };
+    swapButton.onClick = [this]
+    {
+        processor.copyActiveBufferToOtherBuffer();
+
+        // Brief "copied" flash - the same green used for the save-confirm
+        // button - since this action has no other visible effect to look at
+        // (it silently overwrites the other, currently-hidden A/B slot).
+        swapButton.getProperties().set ("borderColour", (int) Palette::saveConfirmBorder.getARGB());
+        swapButton.setColour (juce::TextButton::buttonColourId, Palette::saveConfirmBg);
+        swapButton.setColour (juce::TextButton::textColourOffId, Palette::text);
+        swapButton.repaint();
+
+        juce::Component::SafePointer<PresetBar> safeThis (this);
+        juce::Timer::callAfterDelay (450, [safeThis]
+        {
+            if (safeThis == nullptr)
+                return;
+
+            auto& b = safeThis->swapButton;
+            b.getProperties().remove ("borderColour");
+            b.setColour (juce::TextButton::buttonColourId, juce::Colours::transparentBlack);
+            b.setColour (juce::TextButton::textColourOffId, Palette::textFaint);
+            b.repaint();
+        });
+    };
     addAndMakeVisible (swapButton);
 
     refreshFromProcessor();
@@ -146,7 +179,7 @@ void PresetBar::rebuildUserPresetButtons()
             userPresets[(size_t) i].name,
             [this, i] { processor.applyUserPreset (i); refreshFromProcessor(); },
             [this, i] { processor.deleteUserPreset (i); refreshFromProcessor(); }));
-        addAndMakeVisible (pill);
+        presetScrollContent.addAndMakeVisible (pill);
     }
 
     resized();
@@ -226,33 +259,53 @@ void PresetBar::resized()
 
     r.removeFromRight (14);
 
+    // --- "+ Save preset" (or its inline name-entry form): a fixed slot
+    // right before the A/B group, outside the scrollable presets area below
+    // - so it's always reachable no matter how many presets there are,
+    // instead of potentially being scrolled out of the visible row.
     if (saveNameEditor.isVisible())
     {
-        saveNameEditor.setBounds (r.removeFromLeft (150).reduced (2));
-        r.removeFromLeft (8);
-        saveConfirmButton.setBounds (r.removeFromLeft (70).reduced (2));
-        r.removeFromLeft (8);
-        saveCancelButton.setBounds (r.removeFromLeft (80).reduced (2));
+        saveNameEditor.setBounds (r.removeFromRight (150).reduced (2));
+        r.removeFromRight (8);
+        saveConfirmButton.setBounds (r.removeFromRight (70).reduced (2));
+        r.removeFromRight (8);
+        saveCancelButton.setBounds (r.removeFromRight (80).reduced (2));
     }
     else
     {
-        saveButton.setBounds (r.removeFromLeft (130).reduced (2));
+        saveButton.setBounds (r.removeFromRight (130).reduced (2));
     }
 
-    r.removeFromLeft (10);
+    r.removeFromRight (14); // gap before the fade zone (see paint())
+
+    // --- The scrollable presets row fills whatever's left: factory presets
+    // then saved-preset pills, laid out left to right inside
+    // presetScrollContent at whatever total width they need - that width
+    // can exceed the viewport's visible width, which is the point.
+    presetViewport.setBounds (r);
+    layOutScrollContent();
+}
+
+void PresetBar::layOutScrollContent()
+{
+    const auto rowHeight = presetViewport.getHeight();
+    int x = 0;
 
     for (auto* b : presetButtons)
     {
         const auto w = juce::jmax (70, b->getButtonText().length() * 9 + 28);
-        b->setBounds (r.removeFromLeft (w).reduced (2));
-        r.removeFromLeft (10);
+        b->setBounds (juce::Rectangle<int> (x, 0, w, rowHeight).reduced (2));
+        x += w + 10;
     }
 
     for (auto* pill : userPresetPills)
     {
-        pill->setBounds (r.removeFromLeft (pill->preferredWidth()).reduced (2));
-        r.removeFromLeft (10);
+        const auto w = pill->preferredWidth();
+        pill->setBounds (juce::Rectangle<int> (x, 0, w, rowHeight).reduced (2));
+        x += w + 10;
     }
+
+    presetScrollContent.setSize (juce::jmax (presetViewport.getWidth(), x), rowHeight);
 }
 
 void PresetBar::paint (juce::Graphics& g)
@@ -262,6 +315,57 @@ void PresetBar::paint (juce::Graphics& g)
     auto abArea = getLocalBounds().removeFromRight (118).toFloat();
     g.setColour (Palette::cardBg);
     g.fillRoundedRectangle (abArea.reduced (2.0f), 10.0f);
+
+    // The name-entry field's own background/border - a full pill/capsule,
+    // the same shape (corner = height/2) every button on this row uses via
+    // drawButtonBackground(), not the tighter fixed-radius rounding an
+    // ordinary rounded-rectangle panel gets. saveNameEditor's own colours
+    // are transparent (see its setup in the constructor) so this is the
+    // only thing drawing it.
+    if (saveNameEditor.isVisible())
+    {
+        auto bounds = saveNameEditor.getBounds().toFloat();
+        const auto corner = bounds.getHeight() * 0.5f;
+        g.setColour (Palette::saveInputBg);
+        g.fillRoundedRectangle (bounds, corner);
+        g.setColour (Palette::gold);
+        g.drawRoundedRectangle (bounds.reduced (0.5f), corner, 1.0f);
+    }
+}
+
+void PresetBar::paintOverChildren (juce::Graphics& g)
+{
+    // --- A soft fade over whichever edge of the scrollable presets has more
+    // content just out of view - a visual cue that it scrolls, not a
+    // functional mask (the viewport itself already clips anything scrolled
+    // out of sight). Only shown once there's actually something to scroll
+    // to, and only on the edge that currently has it. Drawn over the
+    // children (paint() runs *before* them) so it actually shows on top of
+    // whatever preset pill happens to sit at that edge, not underneath it.
+    if (presetScrollContent.getWidth() <= presetViewport.getWidth())
+        return;
+
+    constexpr int fadeWidth = 36;
+    const auto viewportBounds = presetViewport.getBounds();
+    const auto scrollX = presetViewport.getViewPositionX();
+
+    if (scrollX + presetViewport.getWidth() < presetScrollContent.getWidth())
+    {
+        auto fadeArea = viewportBounds.withTrimmedLeft (viewportBounds.getWidth() - fadeWidth).toFloat();
+        juce::ColourGradient fade (Palette::background.withAlpha (0.0f), fadeArea.getX(), 0.0f,
+                                   Palette::background, fadeArea.getRight(), 0.0f, false);
+        g.setGradientFill (fade);
+        g.fillRect (fadeArea);
+    }
+
+    if (scrollX > 0)
+    {
+        auto fadeArea = viewportBounds.withTrimmedRight (viewportBounds.getWidth() - fadeWidth).toFloat();
+        juce::ColourGradient fade (Palette::background, fadeArea.getX(), 0.0f,
+                                   Palette::background.withAlpha (0.0f), fadeArea.getRight(), 0.0f, false);
+        g.setGradientFill (fade);
+        g.fillRect (fadeArea);
+    }
 }
 
 } // namespace horizon::ui

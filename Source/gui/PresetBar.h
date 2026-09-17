@@ -17,7 +17,14 @@ namespace horizon::ui
     active slot onto the other one. All backed by the processor's real,
     persistent state - see HorizonPadAudioProcessor's class-level
     thread-safety note for how the A/B buffers and the on-disk user-preset
-    library work. Visuals match the design handoff's presetsRowStyle exactly.
+    library work.
+
+    The factory presets and saved pills can grow past the row's width (an
+    unbounded, ever-growing user-preset library), so they scroll
+    horizontally in their own Viewport with a soft fade at whichever edge
+    has more content just out of view; "+ Save preset" and the A/B group
+    stay in fixed slots outside that viewport so they're always reachable,
+    never pushed off by how many presets exist.
 */
 class PresetBar final : public juce::Component
 {
@@ -26,6 +33,7 @@ public:
     ~PresetBar() override;
 
     void paint (juce::Graphics&) override;
+    void paintOverChildren (juce::Graphics&) override;
     void resized() override;
 
     /** Re-reads the current program, user presets, and A/B state from the processor. */
@@ -57,8 +65,16 @@ private:
     void beginSavingNewPreset();
     void commitSavingNewPreset();
     void cancelSavingNewPreset();
+    void layOutScrollContent();
 
     HorizonPadAudioProcessor& processor;
+
+    // The factory presets and saved-preset pills can outgrow the row's
+    // width, so they live inside a horizontal Viewport instead of being laid
+    // out directly on PresetBar - unlike them, "+ Save preset" and the A/B
+    // group are fixed, always-visible slots outside it (see resized()).
+    juce::Viewport presetViewport;
+    juce::Component presetScrollContent;
 
     juce::OwnedArray<juce::TextButton> presetButtons;
     juce::OwnedArray<UserPresetPill> userPresetPills;
