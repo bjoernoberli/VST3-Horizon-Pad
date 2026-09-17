@@ -66,8 +66,16 @@ PresetBar::PresetBar (HorizonPadAudioProcessor& processorToUse)
     : processor (processorToUse)
 {
     presetViewport.setViewedComponent (&presetScrollContent, false);
-    presetViewport.setScrollBarsShown (false, false);
-    presetViewport.setScrollOnDragEnabled (true);
+    // A real, always-there-when-needed scrollbar rather than relying only on
+    // mouse-wheel/trackpad scrolling: several hosts intercept wheel events
+    // over an embedded plugin view for their own UI (track scrolling, device
+    // chain panning) before the plugin ever sees them, and the pills fill
+    // almost the entire row height/width, leaving barely any bare viewport
+    // background to click-drag on. A thin scrollbar sidesteps both.
+    presetViewport.setScrollBarsShown (false, true); // (vertical, horizontal) - we only want horizontal
+    presetViewport.setScrollBarThickness (8);
+    presetViewport.getHorizontalScrollBar().setColour (juce::ScrollBar::thumbColourId, Palette::gold.withAlpha (0.55f));
+    presetViewport.setScrollOnDragMode (juce::Viewport::ScrollOnDragMode::all);
     addAndMakeVisible (presetViewport);
 
     const auto& presets = processor.getPresets();
@@ -288,7 +296,9 @@ void PresetBar::resized()
 
 void PresetBar::layOutScrollContent()
 {
-    const auto rowHeight = presetViewport.getHeight();
+    // Leave room for the horizontal scrollbar at the bottom even when it's
+    // not currently shown, so pills don't shift/resize when it appears.
+    const auto rowHeight = presetViewport.getHeight() - 8;
     int x = 0;
 
     for (auto* b : presetButtons)
@@ -352,8 +362,8 @@ void PresetBar::paintOverChildren (juce::Graphics& g)
     if (scrollX + presetViewport.getWidth() < presetScrollContent.getWidth())
     {
         auto fadeArea = viewportBounds.withTrimmedLeft (viewportBounds.getWidth() - fadeWidth).toFloat();
-        juce::ColourGradient fade (Palette::background.withAlpha (0.0f), fadeArea.getX(), 0.0f,
-                                   Palette::background, fadeArea.getRight(), 0.0f, false);
+        juce::ColourGradient fade (Palette::presetRowBackdrop.withAlpha (0.0f), fadeArea.getX(), 0.0f,
+                                   Palette::presetRowBackdrop, fadeArea.getRight(), 0.0f, false);
         g.setGradientFill (fade);
         g.fillRect (fadeArea);
     }
@@ -361,8 +371,8 @@ void PresetBar::paintOverChildren (juce::Graphics& g)
     if (scrollX > 0)
     {
         auto fadeArea = viewportBounds.withTrimmedRight (viewportBounds.getWidth() - fadeWidth).toFloat();
-        juce::ColourGradient fade (Palette::background, fadeArea.getX(), 0.0f,
-                                   Palette::background.withAlpha (0.0f), fadeArea.getRight(), 0.0f, false);
+        juce::ColourGradient fade (Palette::presetRowBackdrop, fadeArea.getX(), 0.0f,
+                                   Palette::presetRowBackdrop.withAlpha (0.0f), fadeArea.getRight(), 0.0f, false);
         g.setGradientFill (fade);
         g.fillRect (fadeArea);
     }

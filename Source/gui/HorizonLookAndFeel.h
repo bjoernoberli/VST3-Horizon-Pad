@@ -60,6 +60,17 @@ namespace Palette
 
     const juce::Colour dividerColor     { 0x80282e38 };
 
+    // The panel's own background gradient is vertical only (same colour
+    // across any horizontal row - see drawHorizonPanel()), so a single solid
+    // colour can stand in for "whatever's really behind this" as long as a
+    // component knows its own fixed y-band. This is that colour for the
+    // preset row specifically (PresetBar sits at a fixed y in the editor's
+    // layout, ~34% down the window) - used for the presets' fade-to-
+    // background scroll cue instead of an unrelated fixed dark tone, which
+    // read as a harsh block rather than a fade. Recompute if the editor's
+    // padding/header layout ever changes the preset row's y-position.
+    const juce::Colour presetRowBackdrop { 0xff71603f };
+
     const juce::Colour knobTrack        { 0xff2a2e36 }; // unlit portion of a ring knob
     const juce::Colour knobInner        { 0xff12161d }; // ring knob's dark cap
     const juce::Colour dotUnlit         { 0xff2f333b }; // layer status dot when silent
