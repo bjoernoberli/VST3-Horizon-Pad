@@ -29,16 +29,21 @@ namespace horizon
                                release time; <1 shorter, >1 longer. Multiplies
                                release only, the same way attackTimeScale
                                multiplies attack.
-      * brightnessMultiplier - FILTER macro. 1.0 = the layer's own designed
+      * brightness           - FILTER macro, ramped per sample (smoothedBrightness,
+                               not stepped once per block like the other two
+                               above) since it feeds a filter cutoff directly
+                               and a block-rate step there is audible as
+                               zipper noise. 1.0 = the layer's own designed
                                cutoff curve; <1 darker, >1 brighter. Multiplies
                                whatever cutoff-over-time curve the layer already
                                computes from its envelope, rather than replacing
                                it, so the "opens with the envelope" shape from
                                the sound design survives at every macro setting.
-                               Read live per voice via effectiveBrightness(),
-                               which uses this shared value unless that voice
-                               was frozen by freezeBrightnessForActiveVoices()
-                               - see its doc comment for why.
+                               Read live per voice per sample via
+                               effectiveBrightness(), which uses this shared
+                               ramp unless that voice was frozen by
+                               freezeBrightnessForActiveVoices() - see its doc
+                               comment for why.
 
     Unlike those three, stereo width is set per layer, not globally - each
     pad has its own WIDTH knob (see setWidth()). It is created with the same
@@ -93,6 +98,16 @@ public:
         smoothedWidthSamples.reset (newSampleRate, 0.05);
         smoothedWidthSamples.setCurrentAndTargetValue (0.0f);
 
+        // See effectiveBrightness()/render() below: FILTER's brightness
+        // multiplier is ramped per sample, the same way width and (in the
+        // processor) volume and reverb send already are, so twisting FILTER
+        // - by hand or under host automation - sweeps the cutoff smoothly
+        // instead of stepping it once per block.
+        smoothedBrightness.reset (newSampleRate, 0.02);
+        smoothedBrightness.setCurrentAndTargetValue (1.0f);
+        brightnessBlock.setSize (1, maxBlockSize, false, true, false);
+        brightnessBlock.clear();
+
         prepareLayer ({ newSampleRate, (juce::uint32) maxBlockSize, 2 });
     }
 
@@ -114,25 +129,29 @@ public:
     {
         attackTimeScale = newAttackTimeScale;
         releaseTimeScale = newReleaseTimeScale;
-        brightnessMultiplier = newBrightnessMultiplier;
+        smoothedBrightness.setTargetValue (newBrightnessMultiplier);
     }
 
     /** Called from the audio thread, but NOT once per block - only when the
         processor detects a preset/buffer switch, and only just before that
         block's setMacros() lands the new preset's FILTER value (so
-        brightnessMultiplier here still holds the *old*, pre-switch value).
-        Snapshots that old value into every currently active voice (held or
+        smoothedBrightness's current value here still reflects the *old*,
+        pre-switch ramp). Snapshots that old value into every currently active voice (held or
         still releasing) and locks it there for the rest of that voice's
         life, so an already-sounding note keeps fading on its original
         timbre instead of jumping to the new preset's FILTER setting. Voices
         triggered afterwards are unaffected - see noteOn(). */
     void freezeBrightnessForActiveVoices() noexcept
     {
+        // getCurrentValue() peeks the ramp without advancing it, so this
+        // doesn't perturb the per-sample sweep render() drives below.
+        const auto current = smoothedBrightness.getCurrentValue();
+
         for (auto& v : voices)
         {
             if (v.active)
             {
-                v.frozenBrightness = brightnessMultiplier;
+                v.frozenBrightness = current;
                 v.brightnessFrozen = true;
             }
         }
@@ -208,6 +227,17 @@ public:
         scratch.clear (0, numSamples);
         beginBlock (numSamples);
 
+        // Precompute this block's brightness ramp once (not once per voice):
+        // every renderVoice() call below reads brightnessBlock[n] by sample
+        // index, so many voices sharing a block all see the same ramp
+        // instead of each call racing it forward independently.
+        {
+            auto* bb = brightnessBlock.getWritePointer (0);
+
+            for (int n = 0; n < numSamples; ++n)
+                bb[n] = smoothedBrightness.getNextValue();
+        }
+
         for (int i = 0; i < kMaxVoices; ++i)
         {
             auto& v = voices[(size_t) i];
@@ -264,15 +294,17 @@ protected:
         float frozenBrightness = 1.0f;
     };
 
-    /** The FILTER macro value a voice should render with this block: its own
-        frozen snapshot if freezeBrightnessForActiveVoices() caught it still
-        sounding across a preset/buffer switch, otherwise the live macro -
-        so real-time filter sweeps on a held note keep working right up
-        until a preset change, at which point that note is done listening. */
-    float effectiveBrightness (int voiceIndex) const noexcept
+    /** The FILTER macro value a voice should render with at this sample: its
+        own frozen snapshot if freezeBrightnessForActiveVoices() caught it
+        still sounding across a preset/buffer switch, otherwise this block's
+        precomputed brightness ramp at sampleIndex (see render()) - so
+        real-time filter sweeps on a held note keep working smoothly, with no
+        block-rate stepping, right up until a preset change, at which point
+        that note is done listening. */
+    float effectiveBrightness (int voiceIndex, int sampleIndex) const noexcept
     {
         const auto& v = voices[(size_t) voiceIndex];
-        return v.brightnessFrozen ? v.frozenBrightness : brightnessMultiplier;
+        return v.brightnessFrozen ? v.frozenBrightness : brightnessBlock.getSample (0, sampleIndex);
     }
 
     /** Subclass hooks. */
@@ -343,7 +375,11 @@ protected:
     /** Set once per block by the processor from the ATTACK/RELEASE/FILTER macros. */
     float attackTimeScale = 1.0f;
     float releaseTimeScale = 1.0f;
-    float brightnessMultiplier = 1.0f;
+
+    /** FILTER macro (brightness), ramped per sample rather than stepped once
+        per block - see setMacros()/render()/effectiveBrightness(). */
+    juce::SmoothedValue<float> smoothedBrightness;
+    juce::AudioBuffer<float> brightnessBlock;
 
     /** This layer's own WIDTH knob - see setWidth() and render(). */
     static constexpr int kMaxWidthSamples = 90;

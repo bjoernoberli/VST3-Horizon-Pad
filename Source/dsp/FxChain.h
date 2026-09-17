@@ -50,6 +50,14 @@ private:
     juce::Reverb::Parameters reverbParams;
 
     juce::AudioBuffer<float> dryMono;
+
+    // Genuinely 2 channels, fed the same mono sum on both sides: JUCE's
+    // Reverb only decorrelates left/right (its stereo-spread comb/allpass
+    // tunings) when it's driven through processStereo(), which only happens
+    // when given a 2-channel block - a 1-channel block silently falls back
+    // to processMono() and the identical mono tail then gets copied onto
+    // both output channels by hand below, which is what made the old tail
+    // sound flat/mono instead of spacious.
     juce::AudioBuffer<float> wetStereo;
 
     juce::SmoothedValue<float> smoothedReverbSend;

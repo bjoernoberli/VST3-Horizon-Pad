@@ -60,11 +60,11 @@ void AnalogEnsembleLayer::renderVoice (int voiceIndex, juce::AudioBuffer<float>&
     const auto level = 0.16f * v.velocity;
     const auto baseFreq = bentFrequency (v.frequency);
     const auto delaySize = (int) vs.delayBuffer.size();
-    const auto brightness = effectiveBrightness (voiceIndex);
 
     for (int n = 0; n < numSamples; ++n)
     {
         const auto envGain = v.env.getNextSample();
+        const auto brightness = effectiveBrightness (voiceIndex, n);
 
         float stack = 0.0f;
 

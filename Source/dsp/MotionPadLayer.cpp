@@ -56,11 +56,11 @@ void MotionPadLayer::renderVoice (int voiceIndex, juce::AudioBuffer<float>& targ
     const auto driftDepth = 0.004f + modAmount * 0.010f;
     const auto level = 0.24f * v.velocity;
     const auto baseFreq = bentFrequency (v.frequency);
-    const auto brightness = effectiveBrightness (voiceIndex);
 
     for (int n = 0; n < numSamples; ++n)
     {
         const auto envGain = v.env.getNextSample();
+        const auto brightness = effectiveBrightness (voiceIndex, n);
 
         float stack = 0.0f;
 

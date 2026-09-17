@@ -54,11 +54,11 @@ void WarmFoundationLayer::renderVoice (int voiceIndex, juce::AudioBuffer<float>&
     const auto driftDepth = 0.004f + modAmount * 0.010f; // cycles of pitch ratio, matches drift() in the Faust source
     const auto level = 0.20f * v.velocity;
     const auto baseFreq = bentFrequency (v.frequency);
-    const auto brightness = effectiveBrightness (voiceIndex);
 
     for (int n = 0; n < numSamples; ++n)
     {
         const auto envGain = v.env.getNextSample();
+        const auto brightness = effectiveBrightness (voiceIndex, n);
 
         auto advance = [&] (int idx, float freqHz) noexcept
         {

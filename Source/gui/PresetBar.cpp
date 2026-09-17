@@ -71,7 +71,12 @@ PresetBar::PresetBar (HorizonPadAudioProcessor& processorToUse)
     // bar even at rest) - scrolling still works via wheel/trackpad and via
     // click-drag anywhere in the row, plus the edge fade in
     // paintOverChildren() cues that there's more to see.
-    presetViewport.setScrollBarsShown (false, false);
+    // Viewport::useMouseWheelMoveIfNeeded only scrolls an axis whose
+    // scrollbar is actually visible, *unless* the "allow scrolling without
+    // scrollbar" flags below are set - since the bars are hidden (see the
+    // comment above), leaving those flags false silently swallowed every
+    // trackpad/wheel scroll and left only click-drag working.
+    presetViewport.setScrollBarsShown (false, false, false, true);
     presetViewport.setScrollOnDragMode (juce::Viewport::ScrollOnDragMode::all);
     addAndMakeVisible (presetViewport);
 

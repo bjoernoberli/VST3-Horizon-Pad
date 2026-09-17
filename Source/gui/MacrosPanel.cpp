@@ -49,7 +49,7 @@ void MacrosPanel::resized()
     };
 
     placeRow (t.primaryControl, knobs[0].slider, knobs[1].slider, 42);
-    placeRow (t.secondaryControl, knobs[2].slider, knobs[3].slider, 34);
+    placeRow (t.secondaryControl, knobs[2].slider, knobs[3].slider, 42);
 }
 
 void MacrosPanel::paint (juce::Graphics& g)

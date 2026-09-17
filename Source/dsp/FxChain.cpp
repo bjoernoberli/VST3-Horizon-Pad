@@ -7,9 +7,9 @@ void FxChain::prepare (double sampleRate, int maximumBlockSize)
 {
     currentSampleRate = sampleRate;
 
-    const juce::dsp::ProcessSpec monoSpec { sampleRate, (juce::uint32) juce::jmax (1, maximumBlockSize), 1 };
+    const juce::dsp::ProcessSpec stereoSpec { sampleRate, (juce::uint32) juce::jmax (1, maximumBlockSize), 2 };
 
-    reverb.prepare (monoSpec);
+    reverb.prepare (stereoSpec);
     reverbParams.roomSize = 0.7f;
     reverbParams.damping = 0.35f;
     reverbParams.width = 1.0f;
@@ -19,7 +19,7 @@ void FxChain::prepare (double sampleRate, int maximumBlockSize)
     reverb.setParameters (reverbParams);
 
     dryMono.setSize (1, juce::jmax (1, maximumBlockSize), false, true, false);
-    wetStereo.setSize (1, juce::jmax (1, maximumBlockSize), false, true, false);
+    wetStereo.setSize (2, juce::jmax (1, maximumBlockSize), false, true, false);
 
     const auto ramp = 0.05; // 50 ms
     smoothedReverbSend.reset (sampleRate, ramp);
@@ -65,11 +65,17 @@ void FxChain::process (juce::AudioBuffer<float>& buffer, int numSamples)
         for (int n = 0; n < numSamples; ++n)
             dry[n] = 0.5f * (dry[n] + right[n]);
 
-    auto* wet = wetStereo.getWritePointer (0);
-    juce::FloatVectorOperations::copy (wet, dry, numSamples);
+    // Both wet channels start from the same mono sum - the stereo image in
+    // the tail comes entirely from Reverb's own internal stereo-spread comb
+    // filters once it's driven through processStereo() (see the member
+    // comment in FxChain.h), not from feeding it different input per side.
+    auto* wetL = wetStereo.getWritePointer (0);
+    auto* wetR = wetStereo.getWritePointer (1);
+    juce::FloatVectorOperations::copy (wetL, dry, numSamples);
+    juce::FloatVectorOperations::copy (wetR, dry, numSamples);
 
     {
-        juce::dsp::AudioBlock<float> block (wetStereo.getArrayOfWritePointers(), 1, 0, (size_t) numSamples);
+        juce::dsp::AudioBlock<float> block (wetStereo.getArrayOfWritePointers(), 2, 0, (size_t) numSamples);
         juce::dsp::ProcessContextReplacing<float> ctx (block);
         reverb.process (ctx);
     }
@@ -77,7 +83,8 @@ void FxChain::process (juce::AudioBuffer<float>& buffer, int numSamples)
     for (int n = 0; n < numSamples; ++n)
     {
         const auto reverbSend = smoothedReverbSend.getNextValue();
-        const auto wetSample = wet[n] * reverbSend;
+        const auto wetSampleL = wetL[n] * reverbSend;
+        const auto wetSampleR = wetR[n] * reverbSend;
 
         // Turning REVERB up adds a decorrelated tail on top of the dry
         // signal, which raises total output energy if the dry path stays at
@@ -88,8 +95,8 @@ void FxChain::process (juce::AudioBuffer<float>& buffer, int numSamples)
         // un-reverbed sound is unchanged.
         const auto dryLevel = 0.85f * (1.0f - 0.3f * reverbSend);
 
-        left[n]  = left[n]  * dryLevel + wetSample;
-        right[n] = right[n] * dryLevel + wetSample;
+        left[n]  = left[n]  * dryLevel + wetSampleL;
+        right[n] = right[n] * dryLevel + wetSampleR;
     }
 }
 
