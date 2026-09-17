@@ -76,7 +76,8 @@ void TitleBanner::paint (juce::Graphics& g)
 
     // --- Tagline.
     auto tagArea = r.removeFromTop (22.0f);
-    g.setColour (Palette::textDim);
+    g.setColour (Palette::textKnobLabel); // brighter than textDim - this sits directly on the panel's
+                                           // warming gradient, not an opaque card, so it needs more contrast
     g.setFont (labelFont (14.0f));
     // Split after each \xNN escape (as separate literals) so the compiler's
     // greedy hex-escape parsing can't swallow the following letters (e.g.

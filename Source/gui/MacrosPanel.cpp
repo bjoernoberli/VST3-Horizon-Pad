@@ -36,20 +36,20 @@ MacrosPanel::~MacrosPanel() = default;
 void MacrosPanel::resized()
 {
     const auto slots = computeColumnSlots (getLocalBounds());
-    auto r = slots.control;
 
-    const auto rowHeight = r.getHeight() / 2;
-    const auto colWidth = r.getWidth() / 2;
+    // Same split PadKnob uses (see its resized()), so ATTACK/RELEASE line up
+    // with VOL and FILTER/REVERB line up with WIDTH across the grid row.
+    const auto t = computeTwoTierLayout (slots.control.getUnion (slots.value));
 
-    for (int i = 0; i < 4; ++i)
+    const auto placeRow = [] (juce::Rectangle<int> control, juce::Slider& left, juce::Slider& right, int size)
     {
-        auto cell = juce::Rectangle<int> (r.getX() + (i % 2) * colWidth, r.getY() + (i / 2) * rowHeight,
-                                          colWidth, rowHeight);
-        cell.removeFromTop (16);   // macro label, painted
-        cell.removeFromBottom (16); // percentage, painted
-        const auto size = juce::jmin (cell.getWidth(), cell.getHeight(), 48);
-        knobs[(size_t) i].slider.setBounds (cell.withSizeKeepingCentre (size, size));
-    }
+        const auto colWidth = control.getWidth() / 2;
+        left.setBounds (control.removeFromLeft (colWidth).withSizeKeepingCentre (size, size));
+        right.setBounds (control.withSizeKeepingCentre (size, size));
+    };
+
+    placeRow (t.primaryControl, knobs[0].slider, knobs[1].slider, 42);
+    placeRow (t.secondaryControl, knobs[2].slider, knobs[3].slider, 34);
 }
 
 void MacrosPanel::paint (juce::Graphics& g)
@@ -70,26 +70,45 @@ void MacrosPanel::paint (juce::Graphics& g)
     g.setFont (labelFont (TypeScale::caption).italicised());
     g.drawFittedText ("shape the air", slots.caption, juce::Justification::centred, 2);
 
-    auto r = slots.control;
-    const auto rowHeight = r.getHeight() / 2;
-    const auto colWidth = r.getWidth() / 2;
+    // Same split PadKnob uses (see its paint()), so this card's two rows
+    // line up with VOL/WIDTH across the grid: ATTACK/RELEASE level with
+    // VOL, FILTER/REVERB level with WIDTH, both sides of a shared divider.
+    const auto t = computeTwoTierLayout (slots.control.getUnion (slots.value));
 
-    for (int i = 0; i < 4; ++i)
+    g.setColour (Palette::dividerColor);
+    g.fillRect (juce::Rectangle<int> (t.secondaryLabel.getX(), t.dividerY, t.secondaryLabel.getWidth(), 1));
+
+    const auto drawPair = [&] (juce::Rectangle<int> labelArea, juce::Rectangle<int> valueArea,
+                               float labelSize, float valueSize, int i0, int i1)
     {
-        auto cell = juce::Rectangle<int> (r.getX() + (i % 2) * colWidth, r.getY() + (i / 2) * rowHeight,
-                                          colWidth, rowHeight);
-        auto labelArea = cell.removeFromTop (16);
-        auto valueArea = cell.removeFromBottom (16);
+        const auto labelColWidth = labelArea.getWidth() / 2;
+        const auto valueColWidth = valueArea.getWidth() / 2;
 
-        g.setColour (Palette::macroLabel);
-        g.setFont (labelFont (11.0f, true));
-        g.drawText (knobs[(size_t) i].caption, labelArea, juce::Justification::centred);
+        const std::array<juce::Rectangle<int>, 2> labelCols {
+            labelArea.removeFromLeft (labelColWidth), labelArea
+        };
+        const std::array<juce::Rectangle<int>, 2> valueCols {
+            valueArea.removeFromLeft (valueColWidth), valueArea
+        };
+        const std::array<int, 2> indices { i0, i1 };
 
-        g.setColour (Palette::textDim);
-        g.setFont (labelFont (12.0f));
-        g.drawText (juce::String (juce::roundToInt (knobs[(size_t) i].slider.getValue() * 100.0)) + "%",
-                    valueArea, juce::Justification::centred);
-    }
+        for (int col = 0; col < 2; ++col)
+        {
+            const auto& knob = knobs[(size_t) indices[(size_t) col]];
+
+            g.setColour (Palette::macroLabel);
+            g.setFont (labelFont (labelSize, true));
+            g.drawText (knob.caption, labelCols[(size_t) col], juce::Justification::centred);
+
+            g.setColour (Palette::textDim);
+            g.setFont (labelFont (valueSize));
+            g.drawText (juce::String (juce::roundToInt (knob.slider.getValue() * 100.0)) + "%",
+                       valueCols[(size_t) col], juce::Justification::centred);
+        }
+    };
+
+    drawPair (t.primaryLabel, t.primaryValue, 11.0f, 13.0f, 0, 1);
+    drawPair (t.secondaryLabel, t.secondaryValue, 10.0f, 11.0f, 2, 3);
 }
 
 } // namespace horizon::ui

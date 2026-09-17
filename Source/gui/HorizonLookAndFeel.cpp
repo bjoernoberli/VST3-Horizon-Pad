@@ -238,14 +238,14 @@ void drawHorizonPanel (juce::Graphics& g, juce::Rectangle<float> bounds)
 
             static juce::Image blurredWaves;
             static juce::Rectangle<int> cachedArea;
-            constexpr int blurMargin = 40; // headroom so the blur can feather upward without a hard cutoff
+            constexpr int blurMargin = 40; // headroom so the blur can feather without a hard cutoff at either edge
 
             if (blurredWaves.isNull() || cachedArea != areaInt)
             {
                 cachedArea = areaInt;
 
                 const auto imgW = juce::jmax (1, areaInt.getWidth());
-                const auto imgH = areaInt.getHeight() + blurMargin;
+                const auto imgH = areaInt.getHeight() + blurMargin * 2;
 
                 juce::Image raw (juce::Image::ARGB, imgW, imgH, true);
                 {
@@ -253,22 +253,33 @@ void drawHorizonPanel (juce::Graphics& g, juce::Rectangle<float> bounds)
                     const auto w = (float) imgW;
                     const auto h = (float) areaInt.getHeight();
                     const auto top = (float) blurMargin;
+                    const auto extendedBottom = top + h + (float) blurMargin;
 
+                    // The zigzag top boundary, same points as before, but the
+                    // bottom edge is pushed blurMargin further down than the
+                    // visible area instead of stopping exactly at it - solid
+                    // fill for the blur to feather *within*, so the true
+                    // bottom edge comes out fully opaque instead of fading
+                    // toward transparent (which let the panel's orange
+                    // gradient show through in a thin strip at the very
+                    // bottom - the bug this margin fixes).
                     const float pointsPct[][2] {
-                        { 0.0f, 100.0f }, { 0.0f, 78.0f }, { 9.0f, 60.0f }, { 18.0f, 82.0f },
+                        { 0.0f, 78.0f }, { 9.0f, 60.0f }, { 18.0f, 82.0f },
                         { 29.0f, 55.0f }, { 40.0f, 84.0f }, { 52.0f, 58.0f }, { 64.0f, 86.0f },
-                        { 76.0f, 56.0f }, { 88.0f, 80.0f }, { 100.0f, 62.0f }, { 100.0f, 100.0f },
+                        { 76.0f, 56.0f }, { 88.0f, 80.0f }, { 100.0f, 62.0f },
                     };
 
                     juce::Path skyline;
-                    skyline.startNewSubPath (pointsPct[0][0] * 0.01f * w, top + pointsPct[0][1] * 0.01f * h);
+                    skyline.startNewSubPath (0.0f, extendedBottom);
+                    skyline.lineTo (pointsPct[0][0] * 0.01f * w, top + pointsPct[0][1] * 0.01f * h);
 
                     for (auto& p : pointsPct)
                         skyline.lineTo (p[0] * 0.01f * w, top + p[1] * 0.01f * h);
 
+                    skyline.lineTo (w, extendedBottom);
                     skyline.closeSubPath();
 
-                    ig.setColour (Palette::skyline.withAlpha (0.8f)); // blur softens the apparent density, so start denser
+                    ig.setColour (Palette::skyline.withAlpha (1.0f)); // fully opaque: read as the mountains' own colour, never a tint of the sky behind them
                     ig.fillPath (skyline);
                 }
 
@@ -312,6 +323,30 @@ void drawColumnCard (juce::Graphics& g, juce::Rectangle<float> bounds)
 
     g.setColour (Palette::cardBorder);
     g.drawRoundedRectangle (bounds.reduced (0.5f), 14.0f, 1.0f);
+}
+
+TwoTierLayout computeTwoTierLayout (juce::Rectangle<int> area)
+{
+    TwoTierLayout t;
+
+    area.removeFromTop (4);
+    t.primaryLabel = area.removeFromTop (14);
+    area.removeFromTop (4);
+    t.primaryControl = area.removeFromTop (78);
+    area.removeFromTop (5);
+    t.primaryValue = area.removeFromTop (22);
+
+    area.removeFromTop (5);
+    t.dividerY = area.getY();
+    area.removeFromTop (5);
+
+    t.secondaryLabel = area.removeFromTop (12);
+    area.removeFromTop (4);
+    t.secondaryControl = area.removeFromTop (42);
+    area.removeFromTop (4);
+    t.secondaryValue = area.removeFromTop (16);
+
+    return t;
 }
 
 } // namespace horizon::ui

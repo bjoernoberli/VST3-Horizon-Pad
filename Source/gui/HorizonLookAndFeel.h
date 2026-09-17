@@ -111,7 +111,7 @@ namespace Palette
     across the board from the original design handoff for readability. */
 namespace TypeScale
 {
-    constexpr float icon    = 26.0f;
+    constexpr float icon    = 30.0f;
     constexpr float label   = 14.0f;
     constexpr float caption = 12.5f;
     constexpr float value   = 15.0f;
@@ -208,5 +208,24 @@ ColumnSlots computeColumnSlots (juce::Rectangle<int> cardBounds);
 
 /** Fills+strokes one grid card's rounded-rect chrome (cardBg/cardBorder, 14px corner). */
 void drawColumnCard (juce::Graphics& g, juce::Rectangle<float> bounds);
+
+/**
+    The shared "primary control, then a secondary one below a divider" split
+    used by both PadKnob (VOL over WIDTH) and MacrosPanel (ATTACK/RELEASE
+    over FILTER/REVERB), so the two card types line up at exactly the same
+    heights across the grid row: VOL sits level with ATTACK/RELEASE, and
+    WIDTH sits level with FILTER/REVERB, both across a shared divider line.
+    Takes a card's full control area (control slot + value slot combined,
+    since neither card type uses the shared row-aligned value slot - each
+    control has its own value right beneath it instead).
+*/
+struct TwoTierLayout
+{
+    juce::Rectangle<int> primaryLabel, primaryControl, primaryValue;
+    int dividerY = 0;
+    juce::Rectangle<int> secondaryLabel, secondaryControl, secondaryValue;
+};
+
+TwoTierLayout computeTwoTierLayout (juce::Rectangle<int> area);
 
 } // namespace horizon::ui
