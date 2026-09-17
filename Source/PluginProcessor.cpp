@@ -25,6 +25,34 @@ namespace
         return std::pow (2.0f, (juce::jlimit (0.0f, 1.0f, macroValue) - 0.5f) * 2.0f);
     }
 
+    /** ATTACK/RELEASE macro mapping. From 15% up this is identical to
+        macroMultiplier() (0.5 = the layer's designed time, 1.0 = doubled), so
+        the plugin's default (40%) and everything the sound design already
+        relies on above the fast zone is unchanged.
+
+        Below 15%, macroMultiplier() only reaches 0.5x-0.6x of a layer's
+        multi-second baseline - still 0.6-1.3s, nowhere near a "fast" synth
+        attack/release. This tapers that bottom slice exponentially down to
+        1% of the baseline instead, so a fully left knob lands each layer's
+        attack/release in the ~10-25ms range: short and percussive, but still
+        well clear of the ~1-5ms floor where an envelope ramp starts audibly
+        clicking (conventional synth "fast" attack/release settings sit in
+        that same 5-30ms band). LayerBase::noteOn()'s jmax(0.001f, ...) floor
+        remains as the hard click-free backstop underneath this. */
+    float attackReleaseTimeScale (float macroValue) noexcept
+    {
+        constexpr float kFastZone = 0.15f;
+        constexpr float kMinScale = 0.01f;
+
+        const auto x = juce::jlimit (0.0f, 1.0f, macroValue);
+
+        if (x >= kFastZone)
+            return macroMultiplier (x);
+
+        const auto zoneTopScale = macroMultiplier (kFastZone);
+        return kMinScale * std::pow (zoneTopScale / kMinScale, x / kFastZone);
+    }
+
     /** The twelve (and only twelve) host-automatable parameter IDs, in the
         fixed order used everywhere a "vols/widths/macros" array is needed:
         Root, Clearing, Expanse, Bloom, then the same order for width, then
@@ -612,8 +640,8 @@ void HorizonPadAudioProcessor::processBlock (juce::AudioBuffer<float>& buffer, j
     for (int i = 0; i < kNumLayers; ++i)
         layerGain[(size_t) i].setTargetValue (volumeParams[(size_t) i]->load (std::memory_order_relaxed));
 
-    const auto attackScale = macroMultiplier (macroParams[0]->load (std::memory_order_relaxed));
-    const auto releaseScale = macroMultiplier (macroParams[1]->load (std::memory_order_relaxed));
+    const auto attackScale = attackReleaseTimeScale (macroParams[0]->load (std::memory_order_relaxed));
+    const auto releaseScale = attackReleaseTimeScale (macroParams[1]->load (std::memory_order_relaxed));
     const auto brightnessMul = macroMultiplier (macroParams[2]->load (std::memory_order_relaxed));
     const auto reverbSend = macroParams[3]->load (std::memory_order_relaxed);
 
