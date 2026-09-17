@@ -154,6 +154,13 @@ private:
     std::atomic<int> currentProgram { 0 };
     std::atomic<float> outputLevel { 0.0f };
 
+    // Set (message thread, by applyPreset()/applyUserPreset()/switchBuffer())
+    // whenever an instant full-parameter jump happens; consumed at the top of
+    // the next processBlock(), before that block's new FILTER value lands, to
+    // freeze every currently sounding voice's brightness at its old value -
+    // see LayerBase::freezeBrightnessForActiveVoices().
+    std::atomic<bool> freezeBrightnessRequested { false };
+
     // --- A/B buffers: see the class-level thread-safety note above.
     struct BufferSnapshot
     {

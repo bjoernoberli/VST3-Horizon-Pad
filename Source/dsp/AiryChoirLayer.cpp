@@ -92,6 +92,7 @@ void AiryChoirLayer::renderVoice (int voiceIndex, juce::AudioBuffer<float>& targ
     const auto driftDepth = 0.004f + modAmount * 0.010f;
     const auto level = 0.22f * v.velocity;
     const auto baseFreq = bentFrequency (v.frequency) * 2.0f; // an octave up, per the Faust source
+    const auto brightness = effectiveBrightness (voiceIndex);
 
     for (int n = 0; n < numSamples; ++n)
     {
@@ -115,7 +116,7 @@ void AiryChoirLayer::renderVoice (int voiceIndex, juce::AudioBuffer<float>& targ
 
         vs.sweepPhase = wrapPhase (vs.sweepPhase + 0.09f * invSr);
         const auto sweepHz = 450.0f + (std::sin (vs.sweepPhase * juce::MathConstants<float>::twoPi) * 0.5f + 0.5f) * 900.0f;
-        vs.bandpass.setCutoffFrequency (juce::jlimit (40.0f, (float) (sampleRate * 0.45), sweepHz * brightnessMultiplier));
+        vs.bandpass.setCutoffFrequency (juce::jlimit (40.0f, (float) (sampleRate * 0.45), sweepHz * brightness));
 
         const auto bandpassed = vs.bandpass.processSample (0, stack);
         const auto swept = vs.safetyLowpass.processSample (0, bandpassed);

@@ -298,6 +298,11 @@ void HorizonPadAudioProcessor::setCurrentProgram (int index)
 
 void HorizonPadAudioProcessor::applyPreset (const Preset& preset)
 {
+    // See the freezeBrightnessRequested doc comment: an already-sounding
+    // note should keep its old FILTER timbre across this jump, not snap to
+    // the incoming preset's value.
+    freezeBrightnessRequested.store (true, std::memory_order_release);
+
     auto setParam = [&] (const char* id, float value)
     {
         if (auto* p = apvts.getParameter (id))
@@ -361,6 +366,10 @@ void HorizonPadAudioProcessor::switchBuffer (int index)
 
     if (index == activeBufferIndex.load (std::memory_order_relaxed))
         return;
+
+    // Same instant full-parameter jump as applyPreset() - see
+    // freezeBrightnessRequested's doc comment.
+    freezeBrightnessRequested.store (true, std::memory_order_release);
 
     // Set the new active index *before* pushing parameter changes, so the
     // parameterChanged() callbacks those changes trigger update the buffer we
@@ -462,6 +471,10 @@ void HorizonPadAudioProcessor::applyUserPreset (int index)
         return;
 
     const auto& preset = userPresets[(size_t) index];
+
+    // Same instant full-parameter jump as applyPreset() - see
+    // freezeBrightnessRequested's doc comment.
+    freezeBrightnessRequested.store (true, std::memory_order_release);
 
     auto setParam = [&] (const char* id, float value)
     {
@@ -664,6 +677,14 @@ void HorizonPadAudioProcessor::processBlock (juce::AudioBuffer<float>& buffer, j
 
     const auto pitchBend = performanceState.getPitchBendSemitones();
     const auto modAmount = performanceState.getModAmount();
+
+    // Freeze every layer's currently sounding voices at *last* block's
+    // brightness before this block's setMacros() below overwrites it with
+    // whatever just got set (a new preset/buffer's FILTER value, if that's
+    // what triggered this) - see freezeBrightnessRequested's doc comment.
+    if (freezeBrightnessRequested.exchange (false, std::memory_order_acq_rel))
+        for (auto* layer : layers)
+            layer->freezeBrightnessForActiveVoices();
 
     for (int i = 0; i < kNumLayers; ++i)
     {

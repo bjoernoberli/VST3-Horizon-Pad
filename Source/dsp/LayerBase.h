@@ -35,6 +35,10 @@ namespace horizon
                                computes from its envelope, rather than replacing
                                it, so the "opens with the envelope" shape from
                                the sound design survives at every macro setting.
+                               Read live per voice via effectiveBrightness(),
+                               which uses this shared value unless that voice
+                               was frozen by freezeBrightnessForActiveVoices()
+                               - see its doc comment for why.
 
     Unlike those three, stereo width is set per layer, not globally - each
     pad has its own WIDTH knob (see setWidth()). It is created with the same
@@ -113,6 +117,27 @@ public:
         brightnessMultiplier = newBrightnessMultiplier;
     }
 
+    /** Called from the audio thread, but NOT once per block - only when the
+        processor detects a preset/buffer switch, and only just before that
+        block's setMacros() lands the new preset's FILTER value (so
+        brightnessMultiplier here still holds the *old*, pre-switch value).
+        Snapshots that old value into every currently active voice (held or
+        still releasing) and locks it there for the rest of that voice's
+        life, so an already-sounding note keeps fading on its original
+        timbre instead of jumping to the new preset's FILTER setting. Voices
+        triggered afterwards are unaffected - see noteOn(). */
+    void freezeBrightnessForActiveVoices() noexcept
+    {
+        for (auto& v : voices)
+        {
+            if (v.active)
+            {
+                v.frozenBrightness = brightnessMultiplier;
+                v.brightnessFrozen = true;
+            }
+        }
+    }
+
     /** Called from the audio thread, once per block. 0 = mono, 1 = the same
         fully-wide Haas split the old shared WIDTH macro used. */
     void setWidth (float newWidth) noexcept
@@ -144,6 +169,7 @@ public:
         v.frequency = (float) juce::MidiMessage::getMidiNoteInHertz (midiNote);
         v.velocity = velocity;
         v.active = true;
+        v.brightnessFrozen = false; // a freshly triggered note always tracks the live FILTER macro
 
         juce::ADSR::Parameters p;
         p.attack  = juce::jmax (0.001f, attackSeconds() * attackTimeScale);
@@ -232,7 +258,22 @@ protected:
         float frequency = 440.0f;
         float velocity = 0.0f;
         juce::ADSR env;
+
+        // See freezeBrightnessForActiveVoices() below.
+        bool brightnessFrozen = false;
+        float frozenBrightness = 1.0f;
     };
+
+    /** The FILTER macro value a voice should render with this block: its own
+        frozen snapshot if freezeBrightnessForActiveVoices() caught it still
+        sounding across a preset/buffer switch, otherwise the live macro -
+        so real-time filter sweeps on a held note keep working right up
+        until a preset change, at which point that note is done listening. */
+    float effectiveBrightness (int voiceIndex) const noexcept
+    {
+        const auto& v = voices[(size_t) voiceIndex];
+        return v.brightnessFrozen ? v.frozenBrightness : brightnessMultiplier;
+    }
 
     /** Subclass hooks. */
     virtual void prepareLayer (const juce::dsp::ProcessSpec&) {}

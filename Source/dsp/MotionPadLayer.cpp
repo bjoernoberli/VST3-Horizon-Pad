@@ -56,6 +56,7 @@ void MotionPadLayer::renderVoice (int voiceIndex, juce::AudioBuffer<float>& targ
     const auto driftDepth = 0.004f + modAmount * 0.010f;
     const auto level = 0.24f * v.velocity;
     const auto baseFreq = bentFrequency (v.frequency);
+    const auto brightness = effectiveBrightness (voiceIndex);
 
     for (int n = 0; n < numSamples; ++n)
     {
@@ -79,7 +80,7 @@ void MotionPadLayer::renderVoice (int voiceIndex, juce::AudioBuffer<float>& targ
 
         vs.filterLfoPhase = wrapPhase (vs.filterLfoPhase + 0.6f * invSr);
         const auto filtLfo = std::sin (vs.filterLfoPhase * juce::MathConstants<float>::twoPi) * 600.0f + 1400.0f;
-        vs.filter.setCutoffFrequency (juce::jlimit (40.0f, (float) (sampleRate * 0.45), filtLfo * brightnessMultiplier));
+        vs.filter.setCutoffFrequency (juce::jlimit (40.0f, (float) (sampleRate * 0.45), filtLfo * brightness));
 
         const auto filtered = vs.filter.processSample (0, stack);
 
