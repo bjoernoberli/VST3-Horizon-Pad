@@ -10,32 +10,29 @@ TitleBanner::TitleBanner()
 
 void TitleBanner::paint (juce::Graphics& g)
 {
-    // Repaint our own slice of the shared panel background (gradient/glow)
-    // rather than relying on the editor's single top-level paint() having
-    // already painted through underneath us: some hosts repaint this child
-    // in isolation (e.g. after the plugin window is moved/resized), which
-    // left this region showing raw host background instead of the panel.
-    // Using the *window's* full bounds (translated into our own local
-    // coordinate space) keeps the gradient/glow seamless with the rest of
-    // the panel rather than restarting it at our own bounds.
-    if (auto* parent = getParentComponent())
-    {
-        juce::Graphics::ScopedSaveState save (g);
-        g.reduceClipRegion (getLocalBounds());
-        paintPanelSurface (g, parent->getLocalBounds().toFloat().translated (-(float) getX(), -(float) getY()));
-    }
-
-    // Then the header content itself: wordmark, then the mountain-sunrise
-    // logo, then the tagline - in that order, matching the design handoff
-    // exactly (the logo sits *below* the wordmark, not above it).
+    // No background here - the shared panel (drawHorizonPanel, painted once
+    // behind the whole window by the editor) already provides the gradient,
+    // skyline and glow. This component only draws the header content itself:
+    // wordmark, then the mountain-sunrise logo, then the tagline - in that
+    // order, matching the design handoff exactly (the logo sits *below* the
+    // wordmark, not above it).
     auto r = getLocalBounds().toFloat();
 
-    // --- Wordmark: a gradient serif italic, hi -> warm gold.
+    // --- Wordmark: solid warm gold, not a gradient.
+    //
+    // A gradient fill on drawText() was found (via a pixel-level inspection
+    // of an offscreen createComponentSnapshot() render, independent of any
+    // host/window compositing) to be the actual cause of a much bigger,
+    // long-standing bug: the wordmark's white-to-gold ColourGradient was
+    // being used to fill this *entire component's* bounds - not clipped to
+    // the "Horizon Pad" glyphs at all - while the glyphs themselves never
+    // rendered. That's a JUCE/CoreGraphics gradient-text rendering fault,
+    // not anything about paint order, clipping calls, or host compositing
+    // (every one of those theories was tried and ruled out first). A solid
+    // colour fill for drawText() sidesteps it entirely.
     auto wordmarkArea = r.removeFromTop (46.0f);
     {
-        juce::ColourGradient grad (Palette::text, wordmarkArea.getCentreX() - 90.0f, wordmarkArea.getCentreY(),
-                                   Palette::wordmarkGoldEnd, wordmarkArea.getCentreX() + 90.0f, wordmarkArea.getCentreY(), false);
-        g.setGradientFill (grad);
+        g.setColour (Palette::gold);
         g.setFont (titleFont (32.0f));
         g.drawText ("Horizon Pad", wordmarkArea, juce::Justification::centred);
     }

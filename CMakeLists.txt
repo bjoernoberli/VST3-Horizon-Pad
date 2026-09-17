@@ -45,7 +45,7 @@ juce_add_plugin(HorizonPad
     BUNDLE_ID                   "com.quellemusic.horizonpad"
     PLUGIN_MANUFACTURER_CODE    Qumu
     PLUGIN_CODE                 Hzpd
-    FORMATS                     VST3
+    FORMATS                     VST3 Standalone
     PRODUCT_NAME                "Horizon Pad"
     VST3_CATEGORIES             "Instrument" "Synth"
     IS_SYNTH                    TRUE
