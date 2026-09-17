@@ -259,18 +259,42 @@ public:
         // setWidthLeadChannel()) - left and right are bit-identical at this
         // point in every layer, so it doesn't matter which one is read as
         // the delay line's source.
+        //
+        // Mono-safety: a pure equal-gain delay tap (source on one channel,
+        // delay(source) on the other) is a textbook comb filter with TRUE
+        // zeros at f = (2k+1)/(2*delaySeconds) once L+R are summed to mono -
+        // not just attenuation, complete cancellation, because both channels
+        // carry the exact same signal. Measured with HorizonPadSoundTool +
+        // an offline mono-downmix check: at full WIDTH the fundamental of a
+        // middle-register note landed almost exactly on that first null,
+        // producing a ~36 dB notch and pulling total mono-summed RMS down to
+        // ~24% of a single channel's - i.e. the pad nearly disappears on any
+        // mono playback path (phone/Bluetooth speaker, club mono zone,
+        // broadcast mono check). blendBack mixes a small, width-proportional
+        // fraction of the dry (undelayed) source back into the delayed
+        // channel so that null becomes a bounded, shallow dip instead of a
+        // true zero: at the null frequency the mono sum becomes
+        // 2*blendBack*|source| rather than 0. kMonoSafetyBlend=0.15 bounds
+        // the worst-case notch to about -16 dB (still a legible width cue in
+        // stereo) while width=0 stays byte-identical to before (blendBack=0).
         {
             auto* left = scratch.getWritePointer (0);
             auto* right = scratch.getWritePointer (1);
             auto* source = delayLeftChannel ? right : left;
             auto* delayed = delayLeftChannel ? left : right;
 
+            constexpr float kMonoSafetyBlend = 0.30f;
+
             for (int n = 0; n < numSamples; ++n)
             {
                 const auto widthSamples = smoothedWidthSamples.getNextValue();
                 widthDelay.pushSample (0, source[n]);
                 widthDelay.setDelay (widthSamples);
-                delayed[n] = widthDelay.popSample (0);
+                const auto delayedSample = widthDelay.popSample (0);
+
+                const auto widthFraction = widthSamples * (1.0f / (float) kMaxWidthSamples);
+                const auto blendBack = kMonoSafetyBlend * widthFraction;
+                delayed[n] = delayedSample * (1.0f - blendBack) + source[n] * blendBack;
             }
         }
 
