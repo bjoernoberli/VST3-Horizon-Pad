@@ -66,5 +66,10 @@ private:
 
     horizon::ui::FooterBar footerBar;
 
+    // Every control below sets its own setTooltip() text; without an actual
+    // TooltipWindow instance somewhere in the component tree, that text is
+    // stored but never shown - this is what makes it appear on hover.
+    juce::TooltipWindow tooltipWindow;
+
     JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR (HorizonPadAudioProcessorEditor)
 };

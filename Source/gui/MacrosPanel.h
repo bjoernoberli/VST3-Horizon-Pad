@@ -31,7 +31,7 @@ private:
         juce::String caption;
     };
 
-    void setUpKnob (Knob& knob, const juce::String& caption, const char* paramId,
+    void setUpKnob (Knob& knob, const juce::String& caption, const juce::String& tooltip, const char* paramId,
                     juce::Colour accent, HorizonPadAudioProcessor& processor);
 
     std::array<Knob, 4> knobs;

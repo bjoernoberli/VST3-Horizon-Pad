@@ -18,7 +18,8 @@ HorizonPadAudioProcessorEditor::HorizonPadAudioProcessorEditor (HorizonPadAudioP
                 "BLOOM", "life blooms", horizon::ParamID::bloomVolume, horizon::ParamID::bloomWidth),
       macrosPanel (processorToUse),
       outputMeter (processorToUse),
-      footerBar (processorToUse)
+      footerBar (processorToUse),
+      tooltipWindow (this)
 {
     setLookAndFeel (&lookAndFeel);
 

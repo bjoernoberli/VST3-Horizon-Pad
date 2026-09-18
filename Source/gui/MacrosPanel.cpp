@@ -4,8 +4,8 @@
 namespace horizon::ui
 {
 
-void MacrosPanel::setUpKnob (Knob& knob, const juce::String& caption, const char* paramId,
-                             juce::Colour accent, HorizonPadAudioProcessor& processor)
+void MacrosPanel::setUpKnob (Knob& knob, const juce::String& caption, const juce::String& tooltip,
+                             const char* paramId, juce::Colour accent, HorizonPadAudioProcessor& processor)
 {
     knob.caption = caption;
     knob.slider.setColour (juce::Slider::rotarySliderFillColourId, accent);
@@ -15,6 +15,7 @@ void MacrosPanel::setUpKnob (Knob& knob, const juce::String& caption, const char
     knob.slider.setRotaryParameters (juce::MathConstants<float>::pi * 1.25f,
                                      juce::MathConstants<float>::pi * 2.75f,
                                      true);
+    knob.slider.setTooltip (tooltip);
     addAndMakeVisible (knob.slider);
 
     knob.attachment = std::make_unique<juce::AudioProcessorValueTreeState::SliderAttachment> (
@@ -25,10 +26,21 @@ void MacrosPanel::setUpKnob (Knob& knob, const juce::String& caption, const char
 
 MacrosPanel::MacrosPanel (HorizonPadAudioProcessor& processor)
 {
-    setUpKnob (knobs[0], "ATTACK",  ParamID::attackMacro,  Palette::macroAccents[0], processor);
-    setUpKnob (knobs[1], "RELEASE", ParamID::releaseMacro, Palette::macroAccents[1], processor);
-    setUpKnob (knobs[2], "FILTER",  ParamID::filterMacro,  Palette::macroAccents[2], processor);
-    setUpKnob (knobs[3], "REVERB",  ParamID::reverbMacro,  Palette::macroAccents[3], processor);
+    setUpKnob (knobs[0], "ATTACK",
+              "How quickly notes fade in - left is fast and percussive, right is slow and gradual "
+              "(scales each layer's own designed attack time).",
+              ParamID::attackMacro, Palette::macroAccents[0], processor);
+    setUpKnob (knobs[1], "RELEASE",
+              "How long notes take to fade out after you release them - left is short, right is long "
+              "(scales each layer's own designed release time).",
+              ParamID::releaseMacro, Palette::macroAccents[1], processor);
+    setUpKnob (knobs[2], "FILTER",
+              "Overall brightness - darker to the left, brighter to the right "
+              "(scales each layer's own filter cutoff curve).",
+              ParamID::filterMacro, Palette::macroAccents[2], processor);
+    setUpKnob (knobs[3], "REVERB",
+              "How much reverb is mixed in - dry at 0%, a full wet tail at 100%.",
+              ParamID::reverbMacro, Palette::macroAccents[3], processor);
 }
 
 MacrosPanel::~MacrosPanel() = default;

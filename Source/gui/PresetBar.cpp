@@ -14,6 +14,7 @@ PresetBar::UserPresetPill::UserPresetPill (juce::String presetName, std::functio
     nameButton.getProperties().set ("noBorder", true);
     nameButton.setColour (juce::TextButton::buttonColourId, juce::Colours::transparentBlack);
     nameButton.setColour (juce::TextButton::textColourOffId, Palette::text);
+    nameButton.setTooltip ("Recall \"" + name + "\"");
     nameButton.onClick = std::move (onApply);
     addAndMakeVisible (nameButton);
 
@@ -86,6 +87,7 @@ PresetBar::PresetBar (HorizonPadAudioProcessor& processorToUse)
     {
         auto* b = presetButtons.add (new juce::TextButton (presets[(size_t) i].name));
         b->setClickingTogglesState (false);
+        b->setTooltip (presets[(size_t) i].description);
         b->onClick = [this, i] { processor.setCurrentProgram (i); refreshFromProcessor(); };
         presetScrollContent.addAndMakeVisible (b);
     }
@@ -94,10 +96,12 @@ PresetBar::PresetBar (HorizonPadAudioProcessor& processorToUse)
     saveButton.getProperties().set ("dashedBorder", true);
     saveButton.setColour (juce::TextButton::buttonColourId, juce::Colours::transparentBlack);
     saveButton.setColour (juce::TextButton::textColourOffId, Palette::textKnobLabel);
+    saveButton.setTooltip ("Save the current sound as a new preset in your library.");
     saveButton.onClick = [this] { beginSavingNewPreset(); };
     addAndMakeVisible (saveButton);
 
     saveNameEditor.setSelectAllWhenFocused (true);
+    saveNameEditor.setTooltip ("Type a name, then press Enter or click Save.");
     // Background/outline drawn by PresetBar::paint() instead (a rounded
     // pill, matching every other geometry here) - JUCE's own TextEditor
     // outline is a plain square-cornered rectangle.
@@ -117,6 +121,7 @@ PresetBar::PresetBar (HorizonPadAudioProcessor& processorToUse)
     saveConfirmButton.getProperties().set ("borderColour", (int) Palette::saveConfirmBorder.getARGB());
     saveConfirmButton.setColour (juce::TextButton::buttonColourId, Palette::saveConfirmBg);
     saveConfirmButton.setColour (juce::TextButton::textColourOffId, Palette::text);
+    saveConfirmButton.setTooltip ("Save this preset.");
     saveConfirmButton.onClick = [this] { commitSavingNewPreset(); };
     saveConfirmButton.setVisible (false);
     addChildComponent (saveConfirmButton);
@@ -125,9 +130,13 @@ PresetBar::PresetBar (HorizonPadAudioProcessor& processorToUse)
     saveCancelButton.getProperties().set ("borderColour", (int) Palette::cancelBorder.getARGB());
     saveCancelButton.setColour (juce::TextButton::buttonColourId, Palette::cancelBg);
     saveCancelButton.setColour (juce::TextButton::textColourOffId, Palette::cancelBorder);
+    saveCancelButton.setTooltip ("Cancel without saving.");
     saveCancelButton.onClick = [this] { cancelSavingNewPreset(); };
     saveCancelButton.setVisible (false);
     addChildComponent (saveCancelButton);
+
+    slotAButton.setTooltip ("Switch to buffer A - its own independent snapshot of every parameter, for A/B comparison.");
+    slotBButton.setTooltip ("Switch to buffer B - its own independent snapshot of every parameter, for A/B comparison.");
 
     for (auto* b : { &slotAButton, &slotBButton })
     {

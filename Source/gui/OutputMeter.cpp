@@ -7,6 +7,7 @@ namespace horizon::ui
 OutputMeter::OutputMeter (HorizonPadAudioProcessor& processorToUse)
     : processor (processorToUse)
 {
+    setTooltip ("Live output level (RMS) - a reference only, not a control.");
 }
 
 void OutputMeter::refreshFromProcessor()

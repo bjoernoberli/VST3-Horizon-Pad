@@ -28,12 +28,14 @@ PadKnob::PadKnob (HorizonPadAudioProcessor& processorToUse, int layerIndex,
       subtitle (std::move (subtitleToUse))
 {
     setUpRingKnob (volumeSlider, accent);
+    volumeSlider.setTooltip (caption + " volume - how loud this layer sits in the mix.");
     addAndMakeVisible (volumeSlider);
     volumeAttachment = std::make_unique<juce::AudioProcessorValueTreeState::SliderAttachment> (
         processorToUse.getAPVTS(), volumeParamId, volumeSlider);
     volumeSlider.onValueChange = [this] { repaint(); };
 
     setUpRingKnob (widthSlider, Palette::widthAccent);
+    widthSlider.setTooltip (caption + " stereo width - 0% is mono, 100% is a wide Haas-delayed spread.");
     addAndMakeVisible (widthSlider);
     widthAttachment = std::make_unique<juce::AudioProcessorValueTreeState::SliderAttachment> (
         processorToUse.getAPVTS(), widthParamId, widthSlider);

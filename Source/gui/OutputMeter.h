@@ -9,8 +9,11 @@ namespace horizon::ui
 
 /** The OUTPUT column: a live level meter (read-only - output level is a
     consequence of everything else, not a control) matching the mockup's
-    vertical meter/fader look. */
-class OutputMeter final : public juce::Component
+    vertical meter/fader look. Inherits SettableTooltipClient (plain
+    Component doesn't have it) purely so hovering it can explain what it
+    shows, even though it isn't interactive. */
+class OutputMeter final : public juce::Component,
+                          public juce::SettableTooltipClient
 {
 public:
     explicit OutputMeter (HorizonPadAudioProcessor&);

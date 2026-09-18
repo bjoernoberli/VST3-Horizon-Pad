@@ -31,6 +31,10 @@ WheelSlider::WheelSlider (HorizonPadAudioProcessor& processorToUse, Kind kindToU
 
     slider.setDoubleClickReturnValue (true, 0.0);
 
+    slider.setTooltip (kind == Kind::pitch
+        ? "Pitch bend - drag to bend, springs back to centre on release (also follows an external MIDI pitch wheel)."
+        : "Mod wheel - adds extra analog-style pitch drift on top of each layer's own baseline (also follows an external MIDI mod wheel, CC1).");
+
     slider.onValueChange = [this]
     {
         if (updating)
