@@ -3,95 +3,157 @@
 **Quelle Music — Horizon Pad v1.0.0**
 
 A four-layer ambient pad synthesiser, built with JUCE and shipped as a VST3
-instrument.
+instrument (a Standalone build is also produced for quick testing outside a
+host).
 
 Everything Horizon Pad makes is synthesised from scratch in DSP code. There is
 no sample content, no audio files and no bitmap artwork anywhere in this
-repository — the oscillators, the grain engine and the entire user interface
-(including the sunset banner and the mountain range) are generated in code.
+repository — the oscillators, the shimmer/pitch-shift engine and the entire
+user interface (including the sunset banner and the mountain range) are
+generated in code.
 
 ---
 
 ## The four layers
 
-| # | Layer | Synthesis |
-|---|-------|-----------|
-| 1 | **Warm Pad** | Three-oscillator bank per voice, each crossfading sine → band-limited saw, with slow independent pitch drift for a gentle chorus-like breathing |
-| 2 | **Analog Strings** | Seven detuned oscillators in unison per voice (classic string-machine stack), stereo-spread and run into a lowpass |
-| 3 | **Granular Texture** | A real grain engine: a fixed grain pool, a density-driven scheduler, Hann-windowed grains reading from two procedurally generated source tables (coloured noise and an inharmonic partial stack), pitched to the notes being held |
-| 4 | **Sub Pad** | One oscillator per voice, sine → triangle blend, one or two octaves down, summed to centre |
+| # | GUI name | Class | Synthesis |
+|---|----------|-------|-----------|
+| 1 | **Root** | `WarmFoundationLayer` | Three detuned triangle oscillators + a band-limited (polyBLEP) saw edge + a sub-oscillator one octave down, run through a lowpass filter with a slow "breathing" cutoff modulation |
+| 2 | **Clearing** | `AnalogEnsembleLayer` | A multi-oscillator unison stack summed with its own output through an LFO-swept delay line (2–11 ms, 0.11 Hz), i.e. a chorus/flanger built from the sweep itself rather than a fixed comb, into a lowpass |
+| 3 | **Expanse** | `AiryChoirLayer` | A detuned oscillator stack through a swept bandpass, with a parallel shimmer send: highpass → a two-grain +1-octave pitch shifter (`OctaveShimmer`, the C++ equivalent of a granular `transpose`) → its own small reverb, blended back in |
+| 4 | **Bloom** | `MotionPadLayer` | A detuned oscillator stack through a lowpass with an LFO-modulated cutoff and a tremolo, for a pad that visibly "breathes"/moves over time |
 
-All four layers respond to MIDI note on/off with shared voice allocation (up to
-8 voices), so a held chord sounds coherently across every layer. Attack and
-release times are long by design — this is an ambient pad, not a lead.
+All four layers respond to MIDI note on/off with shared voice allocation (up
+to 8 voices, three-tier stealing: free slot → oldest released-but-ringing
+slot → oldest held note), so a chord sounds coherent across every layer.
+Attack/release are long by design — this is an ambient pad, not a lead — but
+the ATTACK/RELEASE macros can pull them down into a fast, click-free,
+percussive-pad range too (see below).
+
+Each layer also has its own **stereo width**: a short (≤90-sample)
+Haas-style delay tap on one channel, alternated left/right per layer so the
+four layers' precedence-effect pulls roughly cancel across the mix. A
+width-proportional dry-signal blend is mixed back into the delayed channel
+so a full-width setting never produces a true null when the mix is summed to
+mono (a real hazard with an unmitigated equal-gain delay tap) — see the
+comment above the width block in `Source/dsp/LayerBase.h` for the numbers.
 
 ## Global FX chain
 
-Post layer-mix: **filter → delay → reverb**.
+Post layer-mix: a single shared **reverb send** (`Source/dsp/FxChain.{h,cpp}`,
+`juce::dsp::Reverb`, driven genuinely in stereo). REVERB (0–100%) is the wet
+send level; raising it also trims the dry level slightly (0.85× down to
+~0.60×) so it reads as a wet/dry blend rather than a pure loudness increase.
+A final `tanh` soft clip on the output is a safety net for pathological
+automation, not part of the normal sound (headroom is trimmed well ahead of
+it — factory presets peak in the −9 to −21 dB range on a 4-note chord).
 
-- **Filter** — state-variable lowpass, cutoff 200 Hz … 18 kHz
-- **Delay** — 440 ms cross-fed stereo delay with damped (darkening) repeats
-- **Reverb** — `juce::dsp::Reverb`; room size tracks the Reverb parameter
-- **FX Amount** — a single depth macro over the whole wet side. At `0` the chain
-  is audibly transparent no matter where the other three knobs sit; at `1` they
-  act at full value. The exact mapping is documented in
-  [`Source/dsp/FxChain.h`](Source/dsp/FxChain.h).
-
-A `tanh` soft clip on the output keeps extreme preset/FX combinations sane.
+There is no separate delay or global filter stage — FILTER is a macro that
+scales each layer's own already-envelope-modulated cutoff curve instead (see
+Parameters below), and each layer's own oscillator/filter chain provides its
+own movement.
 
 ---
 
 ## Parameters
 
-Exactly **eight** parameters are exposed to the host as automation lanes. All
-are 0–100 %.
+Twelve host-automatable parameters (all 0–100%), in this fixed order — four
+volumes, then four macros, then four widths — so that a controller mapping
+its first 8 knobs to a plugin's first 8 host parameters (e.g. a Launchkey in
+Live's generic Device-knob mode) lands knobs 1–4 on the pad volumes and
+knobs 5–8 on the macros:
 
 | # | Parameter | ID |
 |---|-----------|-----|
-| 1 | Warm Pad Volume | `warmPadVolume` |
-| 2 | Analog Strings Volume | `analogStringsVolume` |
-| 3 | Granular Texture Volume | `granularVolume` |
-| 4 | Sub Pad Volume | `subPadVolume` |
-| 5 | Reverb | `reverb` |
-| 6 | Delay | `delay` |
-| 7 | Filter | `filter` |
-| 8 | FX Amount | `fxAmount` |
+| 1 | Root volume | `rootVolume` |
+| 2 | Clearing volume | `clearingVolume` |
+| 3 | Expanse volume | `expanseVolume` |
+| 4 | Bloom volume | `bloomVolume` |
+| 5 | Attack | `attackMacro` |
+| 6 | Release | `releaseMacro` |
+| 7 | Filter | `filterMacro` |
+| 8 | Reverb | `reverbMacro` |
+| 9 | Root width | `rootWidth` |
+| 10 | Clearing width | `clearingWidth` |
+| 11 | Expanse width | `expanseWidth` |
+| 12 | Bloom width | `bloomWidth` |
 
-### The tone block (not automatable, but saved)
+- **Attack / Release** scale each layer's own designed attack/release time.
+  50% is unity; below ~15% the mapping tapers exponentially down to a fast,
+  click-free ~10–25 ms floor instead of just halving the (multi-second)
+  baseline, so the far left of the knob is a genuinely fast/percussive
+  setting, not just "a bit faster."
+- **Filter** scales each layer's own cutoff-over-time curve (darker below
+  50%, brighter above), ramped per sample rather than stepped once per
+  block, so sweeping it under host automation doesn't zipper.
+- **Reverb** is the shared reverb send level (see FX chain above).
 
-The per-layer **TONE / ATTACK / RELEASE** knobs in the UI — plus the waveform
-blend, detune amount and grain density that presets set behind the scenes — are
-*not* host parameters. They are a separate, non-automated tone block:
+All twelve parameters are smoothed (a `SmoothedValue` ramp, not a raw value
+applied instantaneously) somewhere on their path to audio, to avoid zipper
+noise under host automation.
 
-- set by every factory preset,
-- editable from the plugin's own UI,
-- serialised into the plugin state alongside the APVTS,
-- carried between the UI and the audio thread by a lock-free array of
-  `std::atomic<float>` guarded by a generation counter
-  (`Source/dsp/ToneState.h`) — no locks and no shared mutable structs on the
-  audio path.
+### Performance controls (not host parameters)
 
-This is deliberate: it keeps the host's automation view to the eight parameters
-that matter for a mix, while leaving the sound design to presets.
+**PITCH** and **MOD**, matching a real keyboard's wheels: on-screen
+draggable, and also driven by incoming MIDI pitch-bend / mod wheel (CC1).
+PITCH is spring-loaded (snaps back to centre on release); MOD stays wherever
+it's left. These are intentionally *not* automation lanes — see
+`Source/dsp/PerformanceState.h`.
+
+### A/B buffers and user presets
+
+Two independent snapshots (**A** / **B**) of all twelve parameters, switchable
+and copyable from the preset row — handy for comparing a tweak against where
+you started. Beyond the factory presets below, **"+ Save preset"** writes to
+a small on-disk library (`UserPresets.xml` next to the plugin's app-data
+folder) shared across every instance of the plugin, independent of the
+host's own per-track program list.
 
 ---
 
 ## Factory presets
 
-Six factory programs, wired to both the plugin's preset panel and the host's
-program list (`getNumPrograms` / `setCurrentProgram` / `getProgramName`).
+**30** factory programs (`Source/presets/Presets.cpp`), spanning lush/ambient,
+dark/brooding, bright/shimmering, movement/evolving, minimal/sparse and
+big/cinematic character. Every one is sanity-checked through
+`HorizonPadSoundTool` (see below) for clipping, NaN/Inf and DC offset before
+landing here.
 
 | # | Preset | Character |
 |---|--------|-----------|
-| 1 | **Golden Horizon** | Warm, evolving pad with bright horizon and soft motion (default) |
-| 2 | **Mountain Breeze** | Airy high texture with light air and open brightness |
-| 3 | **Deep Forest** | Dark, slow-blooming pad with deep low end and long tails |
-| 4 | **Ocean Mist** | Lush undulating wash with long delay and deep reverb |
-| 5 | **Night Ambient** | Sparse, dark and very slow, carried by a deep sub |
-| 6 | **Dreamscape** | Shimmering, heavily processed cloud with a huge wet tail |
+| 1 | Lagerfeuer | Warm, close and grounded — the campfire pad |
+| 2 | Alpenglühen | Warm light spreading wide across the peaks |
+| 3 | Morgentau | Fresh and delicate, open but soft |
+| 4 | Sternenzelt | Vast and celestial — Expanse fills the whole sky |
+| 5 | Talwind | Movement and breeze — Bloom leads the way |
+| 6 | Nebelmeer | A hazy, layered fog bank stretching to the horizon |
+| 7 | Schattental | Dark and brooding, low light in a narrow valley |
+| 8 | Mitternachtsblau | A deep midnight drone, barely lit |
+| 9 | Sonnenaufgang | A bright, uplifting sunrise, slowly blooming open |
+| 10 | Bergecho | A vast mountain echo — huge, cinematic space |
+| 11 | Kristallbach | A bright, shimmering stream of crystal tones |
+| 12 | Feuerglut | A warm, smouldering ember — slow and deep |
+| 13 | Windharfe | An airborne harp caught in the wind |
+| 14 | Steinerne Ruhe | Stillness carved in stone — minimal, slow and sparse |
+| 15 | Goldstaub | Golden dust catching the light — bright and airy |
+| 16 | Tiefensog | A deep pull from below — sub-heavy and dark |
+| 17 | Lichtnebel | Soft, bright fog — gentle and balanced |
+| 18 | Sturmfront | A dramatic storm front rolling in — big and wide |
+| 19 | Blütenwind | Blossoms carried on a bright, airy breeze |
+| 20 | Dämmerlicht | Warm dusk light, gently settling |
+| 21 | Frostklang | Cold, bright and sharp — a frozen ring |
+| 22 | Ozeanweite | The vast width of an open ocean — endless reverb |
+| 23 | Kupferglanz | Warm copper shine — mid-bright and present |
+| 24 | Nachtreise | A slow journey through the night — dark and evolving |
+| 25 | Federleicht | Feather-light and delicate, barely there |
+| 26 | Gletscherklang | Icy glacier tones — bright and wide |
+| 27 | Waldlicht | Dappled forest light — organic and warm |
+| 28 | Sternenstaub | Shimmering stardust — restless and bright |
+| 29 | Ruhepuls | A slow resting pulse, with subtle motion underneath |
+| 30 | Klarheit | Clear, present and simple — a mix-friendly starting point |
 
-Each preset's full value set, and a comment explaining the tone-design intent
-behind it, lives in [`Source/presets/Presets.cpp`](Source/presets/Presets.cpp).
+Each preset's full twelve-value parameter set lives in
+[`Source/presets/Presets.cpp`](Source/presets/Presets.cpp).
 
 ---
 
@@ -123,6 +185,11 @@ cmake --build build --target HorizonPad_VST3
 cp -R "build/HorizonPad_artefacts/Release/VST3/Horizon Pad.vst3" ~/Library/Audio/Plug-Ins/VST3/
 ```
 
+Or, for local dev iteration, `tools/install_plugin.sh` builds a Debug config
+and copies it straight to `~/Library/Audio/Plug-Ins/VST3/` (the per-user
+folder every major DAW, including Ableton Live, scans — no admin privileges
+or password prompt needed).
+
 The `.vst3` is a **universal binary** (arm64 + x86_64 in one bundle) by
 default — CMake sets `CMAKE_OSX_ARCHITECTURES="arm64;x86_64"` automatically
 unless you override it. For a faster single-arch dev build, pass your own
@@ -142,6 +209,17 @@ Then copy the `.vst3` folder to `C:\Program Files\Common Files\VST3\`.
 ```bash
 cmake -B build -DFETCHCONTENT_SOURCE_DIR_JUCE=/path/to/JUCE
 ```
+
+### Offline DSP sanity checks
+
+`HorizonPadSoundTool` (`cmake --build build --target HorizonPadSoundTool`)
+renders the real DSP offline — no audio device, no host, no editor — and
+prints peak/RMS/dB, NaN/Inf/clipping detection, DC offset, envelope and
+spectral analysis as JSON. Run `./build/HorizonPadSoundTool --help` for the
+full flag list (choosing a preset, soloing a layer, overriding any parameter,
+rendering at any sample rate/block size, writing a WAV for manual listening).
+This is the fastest way to verify a DSP change didn't introduce clipping,
+NaN/Inf, or a stepping/zipper artifact, without opening a DAW.
 
 ---
 
@@ -166,27 +244,29 @@ cmake --build vst3sdk-build --target validator
   "build/HorizonPad_artefacts/Release/VST3/Horizon Pad.vst3"
 ```
 
-**Current status:** the plugin builds warning-clean and passes the validator with
-**47 tests passed, 0 failed** (verified on Linux/x86-64, GCC 13, Release). The
-validator emits one benign warning — the module ships both a `moduleinfo.json`
-and an exported `IPluginCompatibility` class, and prefers the former; this is
-JUCE 8 default behaviour and not a defect in this plugin.
-
-CI has since confirmed the same result on the **macOS** runner (also 47/47).
-The validator job stays `continue-on-error: true` for now per the project's
-CI rollout plan — promote it to a hard gate once it's been observed green
-across a few more runs.
+`pluginval` is also recommended (`pluginval --strictness-level 10
+--validate "path/to/Horizon Pad.vst3"`) if you have it installed — it was not
+available in the environment this plugin was last audited in, so its result
+against the current build is an open item (see Known gaps below).
 
 ### Known gaps
 
-- The per-layer **solo ("S")** button is presentational. Solo is not a host
-  parameter and there is no per-layer mute in the DSP yet; toggling it only
-  marks the panel. Wiring it up is a planned follow-up.
-- The **PITCH** and **MOD** graphs are visualisers, not editors. They react to
-  the plugin's output level but are not bound to automatable parameters — there
-  are no pitch/mod parameters in the eight-parameter spec.
-- 64-bit (double) audio processing is not supported; the validator reports this
-  as information, not a failure.
+- **Not re-validated against `validator`/`pluginval` since the four-layer
+  rewrite.** Earlier revisions of this plugin (a different 8-parameter/
+  6-preset architecture) passed Steinberg's validator cleanly on both macOS
+  and Windows CI runners; that result predates the current 12-parameter/
+  four-layer/30-preset build and should be re-confirmed.
+- **Code-signing / notarization**: the macOS `.pkg` is unsigned (no Apple
+  Developer ID on this project) — Gatekeeper will warn on first launch (see
+  Installing below for the workaround). This needs the project owner's own
+  Apple Developer credentials to resolve; out of scope for a code change.
+- **Fixed-size window only** (`setResizable(false, false)`); every child
+  paints its own precise layout rather than scaling a "design surface", so
+  there's no benefit to resizing without a real layout-scaling pass first.
+- 64-bit (double-precision) audio processing is not implemented —
+  `supportsDoublePrecisionProcessing()` is not overridden, so it defaults to
+  `false`; hosts running a double-precision graph will process this plugin
+  in single precision.
 
 ---
 
@@ -282,26 +362,35 @@ file to someone who might be on either OS.
 ```
 CMakeLists.txt                     JUCE CMake API, FetchContent, juce_add_plugin
 Source/
-  PluginProcessor.{h,cpp}          APVTS, voice allocation, state, programs
-  PluginEditor.{h,cpp}             Layout; scales a fixed 1120x780 design surface
+  PluginProcessor.{h,cpp}          APVTS, voice allocation/stealing, state,
+                                    A/B buffers, programs
+  PluginEditor.{h,cpp}             Fixed 1080x748 layout, pixel-accurate to
+                                    the design handoff
   dsp/
-    ToneState.h                    Lock-free tone block + unit mappings
-    LayerBase.h, LayerBase.cpp     Shared voice/envelope/filter machinery
-    WarmPadLayer.{h,cpp}
-    AnalogStringsLayer.{h,cpp}
-    GranularTextureLayer.{h,cpp}
-    SubPadLayer.{h,cpp}
-    FxChain.{h,cpp}                Filter -> delay -> reverb + FX Amount macro
+    HorizonTypes.h                 kNumLayers/kMaxVoices/kNumGlobalParams etc.
+    PerformanceState.h             Lock-free PITCH/MOD (not host parameters)
+    LayerBase.{h,cpp}              Shared voice/envelope/filter/width machinery
+    WarmFoundationLayer.{h,cpp}    Root
+    AnalogEnsembleLayer.{h,cpp}    Clearing
+    AiryChoirLayer.{h,cpp}         Expanse
+    MotionPadLayer.{h,cpp}         Bloom
+    OctaveShimmer.h                Two-grain +1-octave pitch shifter (Expanse's shimmer send)
+    FxChain.{h,cpp}                Shared stereo reverb send
   presets/
-    Presets.{h,cpp}                Six factory programs + parameter IDs
+    Presets.{h,cpp}                30 factory programs + parameter IDs
+    UserPresetStore.{h,cpp}        On-disk user preset library (message-thread only)
   gui/
-    HorizonLookAndFeel.{h,cpp}     Palette, typography, custom rotary
-    HeaderBar.{h,cpp}              Logo, wordmark, nav, badges, preset field
-    BannerView.{h,cpp}             Coded sunset gradient + mountain silhouettes
-    LayerPanel.{h,cpp}             Per-layer accent, swatches, four knobs
-    GraphView.{h,cpp}              PITCH / MOD line graphs
-    GlobalParamsPanel.{h,cpp}      Reverb / Delay / Filter / FX Amount + icons
-    PresetBrowser.{h,cpp}          Preset list, swatch, description, arrows
+    HorizonLookAndFeel.{h,cpp}     Palette, typography, shared panel/card painters
+    TitleBanner.{h,cpp}            Logo, wordmark
+    PresetBar.{h,cpp}              Factory + user presets, save flow, A/B buffers
+    PadKnob.{h,cpp}                One layer's VOL/WIDTH knob pair
+    MacrosPanel.{h,cpp}            ATTACK/RELEASE/FILTER/REVERB
+    WheelSlider.{h,cpp}            PITCH/MOD wheels
+    OutputMeter.{h,cpp}            Live output level (read-only)
+    FooterBar.{h,cpp}              Bottom strip: wordmark, tagline, buffer/layer/macro counts
+tools/
+  install_plugin.sh                Local dev build+install to ~/Library/Audio/Plug-Ins/VST3
+  sound_tool/Main.cpp              HorizonPadSoundTool - offline DSP render+analysis CLI
 packaging/
   macos/build-pkg.sh               Builds the unsigned .pkg installer
   macos/scripts/postinstall        Runs on-Mac after install: re-signs + verifies
