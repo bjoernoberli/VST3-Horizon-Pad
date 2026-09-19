@@ -675,9 +675,6 @@ void HorizonPadAudioProcessor::processBlock (juce::AudioBuffer<float>& buffer, j
     const auto brightnessMul = macroMultiplier (macroParams[2]->load (std::memory_order_relaxed));
     const auto reverbSend = macroParams[3]->load (std::memory_order_relaxed);
 
-    const auto pitchBend = performanceState.getPitchBendSemitones();
-    const auto modAmount = performanceState.getModAmount();
-
     // Freeze every layer's currently sounding voices at *last* block's
     // brightness before this block's setMacros() below overwrites it with
     // whatever just got set (a new preset/buffer's FILTER value, if that's
@@ -690,11 +687,29 @@ void HorizonPadAudioProcessor::processBlock (juce::AudioBuffer<float>& buffer, j
     {
         auto* layer = layers[(size_t) i];
         layer->setMacros (attackScale, releaseScale, brightnessMul);
-        layer->setPerformance (pitchBend, modAmount);
         layer->setWidth (widthParams[(size_t) i]->load (std::memory_order_relaxed));
     }
 
     fxChain.setParameters (reverbSend);
+
+    // Pushes performanceState's current pitch-bend/mod values into every
+    // layer. Called once before the first segment and again after every MIDI
+    // message below, so a pitch-wheel or mod-wheel (CC1) message that lands
+    // mid-block - handleMidiMessage() updates performanceState, not the
+    // layers directly - actually takes effect at that message's segment
+    // boundary instead of silently waiting for the next processBlock() call,
+    // matching the sample-accuracy the segment-splitting below already gives
+    // note-on/note-off.
+    auto applyPerformanceState = [&]
+    {
+        const auto pb = performanceState.getPitchBendSemitones();
+        const auto ma = performanceState.getModAmount();
+
+        for (auto* layer : layers)
+            layer->setPerformance (pb, ma);
+    };
+
+    applyPerformanceState();
 
     // --- Render, splitting the block at MIDI event boundaries.
     int position = 0;
@@ -710,6 +725,7 @@ void HorizonPadAudioProcessor::processBlock (juce::AudioBuffer<float>& buffer, j
         }
 
         handleMidiMessage (metadata.getMessage());
+        applyPerformanceState();
     }
 
     renderSegment (buffer, position, numSamples - position);

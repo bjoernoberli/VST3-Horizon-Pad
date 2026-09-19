@@ -83,20 +83,26 @@ void FxChain::process (juce::AudioBuffer<float>& buffer, int numSamples)
     for (int n = 0; n < numSamples; ++n)
     {
         const auto reverbSend = smoothedReverbSend.getNextValue();
-        const auto wetSampleL = wetL[n] * reverbSend;
-        const auto wetSampleR = wetR[n] * reverbSend;
 
         // Turning REVERB up adds a decorrelated tail on top of the dry
         // signal, which raises total output energy if the dry path stays at
-        // a fixed level - that's the "reverb makes it louder" complaint. Trim
-        // dry down a little as the send rises (0.85 at 0%, ~0.60 at 100%) so
-        // the knob reads as a wet/dry blend rather than a pure add; at
-        // REVERB=0 this is exactly the original fixed 0.85 trim, so the
-        // un-reverbed sound is unchanged.
-        const auto dryLevel = 0.85f * (1.0f - 0.3f * reverbSend);
+        // a fixed level - that's the "reverb makes it louder" complaint.
+        // A flat trim (as this used to be) can't fully fix it because the
+        // wet tail isn't just "more of the same level" - it's already
+        // louder than the dry signal feeding it (see kWetCalibrationGain).
+        // Instead this is an equal-power (cos/sin) crossfade between dry
+        // and the level-matched wet signal: with dry and (calibrated) wet
+        // at roughly equal RMS and largely decorrelated, cos^2 + sin^2 = 1
+        // keeps total power ~constant across the whole sweep, not just at
+        // the endpoints. At REVERB=0 this reduces to the original fixed
+        // 0.85 dry trim (cos(0) = 1) with no wet, so the un-reverbed sound
+        // is unchanged; at REVERB=1 it's pure (calibrated) wet.
+        const auto theta = reverbSend * juce::MathConstants<float>::halfPi;
+        const auto dryLevel = 0.85f * std::cos (theta);
+        const auto wetLevel = 0.85f * kWetCalibrationGain * std::sin (theta);
 
-        left[n]  = left[n]  * dryLevel + wetSampleL;
-        right[n] = right[n] * dryLevel + wetSampleR;
+        left[n]  = left[n]  * dryLevel + wetL[n] * wetLevel;
+        right[n] = right[n] * dryLevel + wetR[n] * wetLevel;
     }
 }
 
