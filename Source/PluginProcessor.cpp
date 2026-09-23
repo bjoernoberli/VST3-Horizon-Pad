@@ -116,10 +116,16 @@ juce::AudioProcessorValueTreeState::ParameterLayout HorizonPadAudioProcessor::cr
     // Launchkey in Live's generic Device-knob mode - lands its knobs 5-8 on
     // ATTACK/RELEASE/FILTER/REVERB, not width (see macroIds()/widthIds()
     // above for why the order matters).
-    addPercent (ParamID::rootVolume,     "Root",     0.75f);
-    addPercent (ParamID::clearingVolume, "Clearing", 0.30f);
-    addPercent (ParamID::expanseVolume,  "Expanse",  0.15f);
-    addPercent (ParamID::bloomVolume,    "Bloom",    0.25f);
+    // Volume defaults are the Lagerfeuer balance scaled by the same 0.677 the
+    // preset itself took in the 2026-09-23 loudness-matching pass. Before that
+    // scaling they were the pre-match values, which left a fresh instance
+    // ~3.4 dB hotter than every preset in the bank and peaking above the output
+    // limiter's knee - i.e. the very first thing a user heard was the only
+    // patch in the product that was being limited.
+    addPercent (ParamID::rootVolume,     "Root",     0.508f);
+    addPercent (ParamID::clearingVolume, "Clearing", 0.203f);
+    addPercent (ParamID::expanseVolume,  "Expanse",  0.102f);
+    addPercent (ParamID::bloomVolume,    "Bloom",    0.169f);
     addPercent (ParamID::attackMacro,    "Attack",   0.40f);
     addPercent (ParamID::releaseMacro,   "Release",  0.40f);
     addPercent (ParamID::filterMacro,    "Filter",   0.30f);
@@ -239,6 +245,11 @@ void HorizonPadAudioProcessor::prepareToPlay (double sampleRate, int samplesPerB
     for (int i = 0; i < kNumLayers; ++i)
         layerGain[(size_t) i].setCurrentAndTargetValue (volumeParams[(size_t) i]->load());
 
+    // One-pole DC blocker: y = x - x1 + R*y1, R = 1 - 2*pi*fc/fs.
+    dcBlockerCoeff = 1.0f - (juce::MathConstants<float>::twoPi * kDcBlockerHz / (float) sampleRate);
+    dcBlockerX1.fill (0.0f);
+    dcBlockerY1.fill (0.0f);
+
     allNotesOff (true);
 }
 
@@ -248,6 +259,9 @@ void HorizonPadAudioProcessor::releaseResources()
         layer->reset();
 
     fxChain.reset();
+
+    dcBlockerX1.fill (0.0f);
+    dcBlockerY1.fill (0.0f);
 }
 
 bool HorizonPadAudioProcessor::isBusesLayoutSupported (const BusesLayout& layouts) const
@@ -732,20 +746,69 @@ void HorizonPadAudioProcessor::processBlock (juce::AudioBuffer<float>& buffer, j
 
     fxChain.process (buffer, numSamples);
 
-    // --- Output stage: a fixed headroom trim, then a tanh soft clip.
+    // --- Output stage: a fixed make-up gain, then a soft limiter.
     //
-    // Sternenzelt and Alpengluhen stack Expanse's shimmer/reverb on top of a
-    // multi-note chord; the trim keeps that comfortably below the clipper, so
-    // the clipper is only a safety net for pathological automation, not part
-    // of the normal sound.
-    constexpr float kOutputTrim = 0.75f;
+    // Measured 2026-09-23 with HorizonPadSoundTool (--true-peak, three voicings
+    // across the worship-keys register, every factory preset): the previous
+    // stage, tanh(x * 0.75), left the instrument peaking between -12.5 and
+    // -23.9 dBTP. That is roughly a tenth of the available headroom, and the
+    // tanh never engaged at all - a 0.75 trim applied to a worst-case peak of
+    // 0.45 sits in tanh's linear region, so the trim cost 2.5 dB and the
+    // clipper bought nothing.
+    //
+    // kOutputGain re-stages that: +11.4 dB relative to the old trim. Set
+    // against the loudness-matched bank (17 of 18 presets within +/-1 LU at
+    // -18.1 LUFS), it puts the loudest preset at -3.25 dBTP and the rest within
+    // ~3.5 dB below it - the spread that is left is crest factor, not loudness,
+    // and chasing it would flatten the bank's dynamics for nothing.
+    //
+    // The limiter is exactly linear up to kKnee and only bends above it,
+    // asymptoting to kCeiling, so no factory preset is limited at all: across
+    // 63 renders of the seven loudest presets in three voicings, the worst true
+    // peak was -2.64 dBTP against a knee at -1.94 dBFS. The pathological case
+    // the limiter exists for (all four volumes, all four widths, FILTER and
+    // REVERB at 100%, eight voices at velocity 127) goes in at +2.0 dBTP and
+    // comes out at -0.04 dBFS.
+    //
+    // Note the stage is NOT bit-transparent even below the knee: the DC blocker
+    // below runs on every sample. It is -0.09 dB at 13.75 Hz and -0.04 dB at
+    // 20 Hz, so it is inaudible, but "inaudible" and "bypassed" are different
+    // claims and only the first one is true here.
+    constexpr float kOutputGain = 2.8f;
+    constexpr float kKnee       = 0.80f;  // -1.9 dBFS - linear below this
+    constexpr float kCeiling    = 0.995f; // -0.04 dBFS - asymptote, never exceeded
+    constexpr float kRange      = kCeiling - kKnee;
 
     for (int ch = 0; ch < buffer.getNumChannels(); ++ch)
     {
         auto* data = buffer.getWritePointer (ch);
 
         for (int n = 0; n < numSamples; ++n)
-            data[n] = std::tanh (data[n] * kOutputTrim);
+        {
+            const auto x = data[n] * kOutputGain;
+            const auto a = std::abs (x);
+
+            // Continuous and C1 at the knee, since tanh'(0) = 1.
+            const auto limited = a <= kKnee
+                                   ? x
+                                   : std::copysign (kKnee + kRange * std::tanh ((a - kKnee) / kRange), x);
+
+            // DC blocker, after the limiter because the limiter is what
+            // creates the offset. See kDcBlockerHz in the header.
+            const auto chIndex = (size_t) juce::jmin (ch, 1);
+            const auto blocked = limited - dcBlockerX1[chIndex] + dcBlockerCoeff * dcBlockerY1[chIndex];
+            dcBlockerX1[chIndex] = limited;
+            dcBlockerY1[chIndex] = blocked;
+
+            // Final brickwall. The DC blocker subtracts a slowly-varying local
+            // mean, so on asymmetric material it can push a sample that the
+            // limiter had just placed at the ceiling back over it - measured at
+            // up to +0.5 dBFS at the pathological extreme before this clamp
+            // existed. Restoring the hard ceiling matters more than the last
+            // fraction of a dB of transparency, and this only ever engages on
+            // material the limiter is already working on.
+            data[n] = juce::jlimit (-kCeiling, kCeiling, blocked);
+        }
     }
 
     if (buffer.getNumChannels() > 0)

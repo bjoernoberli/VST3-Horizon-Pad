@@ -142,6 +142,27 @@ private:
 
     juce::AudioBuffer<float> layerBuffer;
 
+    /*  Output DC blocker state, one pole per channel.
+
+        The output limiter is odd-symmetric, but the summed four-layer signal
+        is not, so when the limiter engages it shaves asymmetric peaks
+        asymmetrically and leaves a DC residue. Measured 2026-09-23 at the
+        pathological extreme (all twelve parameters at maximum, eight voices at
+        velocity 127) that residue reached -58.6 dBFS at 96 kHz, past both
+        invariant #6 and the -80 dBFS target in the playbook's metric table.
+        In normal use - any factory preset, or the default patch - it is
+        -140 dBFS or lower, i.e. nothing, because the limiter never engages.
+
+        The corner is deliberately very low (kDcBlockerHz): this instrument's
+        sub-oscillator runs an octave below the played note, so MIDI 21 puts
+        real musical content at 13.75 Hz. At 2 Hz the blocker is -0.09 dB
+        there and -0.04 dB at 20 Hz.
+    */
+    static constexpr float kDcBlockerHz = 2.0f;
+    float dcBlockerCoeff = 0.0f;                  // set in prepareToPlay
+    std::array<float, 2> dcBlockerX1 { 0.0f, 0.0f };
+    std::array<float, 2> dcBlockerY1 { 0.0f, 0.0f };
+
     struct VoiceSlot
     {
         int midiNote = -1;          ///< -1 when not held

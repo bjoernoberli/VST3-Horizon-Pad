@@ -46,9 +46,11 @@
 #include "PluginProcessor.h"
 
 #include <algorithm>
+#include <array>
 #include <cmath>
 #include <cstdio>
 #include <iostream>
+#include <limits>
 #include <map>
 #include <optional>
 #include <vector>
@@ -107,7 +109,11 @@ namespace
 
         for (int i = 1; i < argc; ++i)
         {
-            juce::String arg (argv[i]);
+            // fromUTF8, not juce::String's const char* constructor: that
+            // constructor asserts its input is plain ASCII, so a UTF-8 argument
+            // (--preset=Alpengluehen with a real umlaut, or an --out path with
+            // one) was silently mangled into a string that matched no preset.
+            auto arg = juce::String::fromUTF8 (argv[i]);
 
             if (! arg.startsWith ("--"))
                 continue;
@@ -136,7 +142,13 @@ namespace
             "  --tail=6.0             Seconds to keep rendering after note-off,\n"
             "                         to capture release + reverb tail (default 6.0)\n"
             "  --sample-rate=48000    Render sample rate in Hz (default 48000)\n"
-            "  --block=512            Block size passed to processBlock (default 512)\n\n"
+            "  --block=512            Block size passed to processBlock (default 512)\n"
+            "  --note-onsets=0,0,3    Per-note onset times in seconds, matched positionally\n"
+            "                         to --notes. Missing entries default to 0.\n"
+            "  --note-holds=6,6,2     Per-note hold durations in seconds, matched positionally\n"
+            "                         to --notes. Missing entries default to --hold.\n"
+            "                         Together these make voice stealing testable, e.g.\n"
+            "                         8 notes at 0 plus a 9th at 3s on an 8-slot engine.\n\n"
             "Patch selection (applied in this order - each stage can override the last):\n"
             "  --preset=<name|index>  Apply a factory preset first (see --list-presets)\n"
             "  --solo=root,clearing   Zero every OTHER layer's volume, set these to 1.0\n"
@@ -153,7 +165,25 @@ namespace
             "  --fft-size=8192        Spectral analysis window length, rounded to the\n"
             "                         nearest power of two (default 8192)\n"
             "  --click-threshold=0.2  Per-sample delta above which a discontinuity is\n"
-            "                         flagged as a possible click (default 0.2)\n\n"
+            "                         flagged as a possible click (default 0.2)\n"
+            "  --probe-at=3.0[,5.5]   Extra times in seconds at which to measure a step\n"
+            "                         discontinuity, reported under transients.probes.\n"
+            "                         Use it for events that are not MIDI events -\n"
+            "                         above all a voice steal.\n"
+            "  --transient-window=100 Samples examined after the first note-on and after\n"
+            "                         the last note-off for a step discontinuity, reported\n"
+            "                         under \"transients\" both absolutely and relative to\n"
+            "                         the signal level just before (default 100)\n"
+            "  --true-peak            Also measure 4x-oversampled true peak. Off by\n"
+            "                         default: it is the most expensive metric here and\n"
+            "                         the iteration loop does not need it.\n"
+            "  --partial-ratios=0.5,1,2\n"
+            "                         The partial model the alias floor is scored against:\n"
+            "                         harmonic series of each ratio x f0. Default covers\n"
+            "                         Root's sub-octave (0.5), the fundamental (1) and\n"
+            "                         Expanse's shimmer octave (2). Narrow it when soloing\n"
+            "                         a layer that has no sub or no shimmer, or the alias\n"
+            "                         floor is scored against partials that cannot exist.\n\n"
             "Output:\n"
             "  --out=<path.wav>       Also write the render to a 32-bit float WAV file\n"
             "  --list-presets         Print the factory preset table as JSON and exit\n"
@@ -274,7 +304,20 @@ namespace
 
         struct Peak { double freqHz; double magnitude; };
         std::vector<Peak> topNonHarmonicPeaks;
+        std::vector<Peak> topResidualPeaks; // strongest bins the partial model does not explain
+
+        // Alias floor, measured against the partial model (see analyzeSpectrum).
+        double residualEnergyRatio = 0.0; // energy not explained by the model / total
+        double asrDb = -300.0;            // 10*log10(residual / modelled partials)
+        double nmrMaxDb = -300.0;         // worst critical band, < 0 dB = masked
+        double nmrWorstBandHz = 0.0;
     };
+
+    /** Traunmueller/Zwicker Bark scale - the critical-band axis NMR is computed on. */
+    double hzToBark (double f) noexcept
+    {
+        return 13.0 * std::atan (0.00076 * f) + 3.5 * std::atan (std::pow (f / 7500.0, 2.0));
+    }
 
     int nextPowerOfTwo (int n)
     {
@@ -283,12 +326,37 @@ namespace
         return juce::jmax (256, p);
     }
 
+    /*  Alias floor for THIS instrument, and why it needs a partial model.
+
+        Every Horizon Pad layer is a detuned stack, Root adds a sub-oscillator an
+        octave down, and Expanse adds a +1-octave shimmer. So a large fraction of
+        the output is inharmonic *by design*, and the plain non-harmonic energy
+        ratio above reads 0.3-0.6 on a perfectly clean render - it cannot tell
+        "intentionally detuned partial" from "alias".
+
+        The alias metrics below therefore score against a declared partial model:
+        every harmonic of (ratio * f0) for each ratio in partialRatios - by
+        default 0.5 (sub), 1.0 (fundamental) and 2.0 (shimmer octave) - each with
+        the same +/-2.5% (~43 cent) tolerance the detune/chorus spread needs.
+        Energy outside all of that is residual: alias, plus noise, plus any
+        partial the model does not know about. Solo a layer with no shimmer and
+        pass --partial-ratios=0.5,1 to tighten the model to what it actually has.
+
+        ASR is the summary number; NMR is the decisive one (playbook 4.4). NMR
+        here is a documented simplification, not the full VA-literature model:
+        1-Bark bands, masker energy = modelled partials in that band, spread to
+        neighbours at -12 dB/Bark upward and -27 dB/Bark downward, a flat 15 dB
+        masking depth (the conservative end of the 15-30 dB range), and an
+        absolute floor of -100 dB relative to total energy so that empty bands
+        cannot report an infinite ratio.
+    */
     SpectralResult analyzeSpectrum (const juce::AudioBuffer<float>& buffer,
                                      double sampleRate,
                                      int regionStartSample,
                                      int regionEndSample,
                                      double fundamentalHz,
-                                     int requestedFftSize)
+                                     int requestedFftSize,
+                                     const std::vector<double>& partialRatios)
     {
         SpectralResult result;
 
@@ -349,24 +417,46 @@ namespace
         // fundamental (accounting for the layers' own detune/drift, a few
         // cents to a few Hz, and chorus/shimmer spread on top of that).
         std::vector<bool> isHarmonic ((size_t) numBins, false);
+        std::vector<bool> isPartial ((size_t) numBins, false);
         const auto nyquist = sampleRate * 0.5;
 
-        for (int k = 1; (double) k * fundamentalHz < nyquist; ++k)
+        const auto markSeries = [&] (double seriesF0, std::vector<bool>& mask)
         {
-            const auto harmonicHz = (double) k * fundamentalHz;
-            const auto toleranceHz = juce::jmax (binHz * 2.0, harmonicHz * 0.025);
-            const int loBin = juce::jmax (1, (int) std::floor ((harmonicHz - toleranceHz) / binHz));
-            const int hiBin = juce::jmin (numBins - 1, (int) std::ceil ((harmonicHz + toleranceHz) / binHz));
+            if (seriesF0 <= 0.0)
+                return;
 
-            for (int b = loBin; b <= hiBin; ++b)
-                isHarmonic[(size_t) b] = true;
-        }
+            for (int k = 1; (double) k * seriesF0 < nyquist; ++k)
+            {
+                const auto partialHz = (double) k * seriesF0;
+                const auto toleranceHz = juce::jmax (binHz * 2.0, partialHz * 0.025);
+                const int loBin = juce::jmax (1, (int) std::floor ((partialHz - toleranceHz) / binHz));
+                const int hiBin = juce::jmin (numBins - 1, (int) std::ceil ((partialHz + toleranceHz) / binHz));
+
+                for (int b = loBin; b <= hiBin; ++b)
+                    mask[(size_t) b] = true;
+            }
+        };
+
+        // Legacy field: harmonics of f0 only.
+        markSeries (fundamentalHz, isHarmonic);
+
+        // Alias model: every declared ratio's own harmonic series.
+        for (auto ratio : partialRatios)
+            markSeries (fundamentalHz * ratio, isPartial);
 
         double totalEnergy = 0.0, harmonicEnergy = 0.0, highFreqEnergy = 0.0;
+        double partialEnergy = 0.0, residualEnergy = 0.0;
         double centroidNum = 0.0, centroidDen = 0.0;
 
+        // 1-Bark bands, 0..24 Bark covers 20 Hz - 20 kHz.
+        constexpr int numBands = 25;
+        std::array<double, numBands> bandPartial {};
+        std::array<double, numBands> bandResidual {};
+        bandPartial.fill (0.0);
+        bandResidual.fill (0.0);
+
         struct BinPeak { double freqHz; double mag; };
-        std::vector<BinPeak> nonHarmonicPeaks;
+        std::vector<BinPeak> nonHarmonicPeaks, residualPeaks;
 
         for (int b = 1; b < numBins; ++b)
         {
@@ -383,6 +473,20 @@ namespace
             else
                 nonHarmonicPeaks.push_back ({ freqHz, mag });
 
+            const int band = juce::jlimit (0, numBands - 1, (int) std::floor (hzToBark (freqHz)));
+
+            if (isPartial[(size_t) b])
+            {
+                partialEnergy += energy;
+                bandPartial[(size_t) band] += energy;
+            }
+            else
+            {
+                residualEnergy += energy;
+                bandResidual[(size_t) band] += energy;
+                residualPeaks.push_back ({ freqHz, mag });
+            }
+
             if (freqHz > 12000.0)
                 highFreqEnergy += energy;
         }
@@ -397,9 +501,70 @@ namespace
         result.spectralCentroidHz = centroidDen > 1.0e-9 ? centroidNum / centroidDen : 0.0;
         result.windowsAveraged = windowsDone;
         result.fftSizeUsed = fftSize;
+        result.residualEnergyRatio = totalEnergy > 1.0e-12 ? juce::jlimit (0.0, 1.0, residualEnergy / totalEnergy) : 0.0;
+
+        if (partialEnergy > 1.0e-15 && residualEnergy > 0.0)
+            result.asrDb = 10.0 * std::log10 (residualEnergy / partialEnergy);
+
+        // NMR per critical band - see the comment above this function for the
+        // simplifications this makes and why.
+        if (totalEnergy > 1.0e-12)
+        {
+            constexpr double maskingDepthDb = 15.0;
+            constexpr double spreadUpDbPerBark = 12.0;   // masker below the band
+            constexpr double spreadDownDbPerBark = 27.0; // masker above the band
+            const double absFloor = totalEnergy * 1.0e-10;
+
+            for (int i = 0; i < numBands; ++i)
+            {
+                if (bandResidual[(size_t) i] <= absFloor)
+                    continue;
+
+                double masker = 0.0;
+
+                for (int j = 0; j < numBands; ++j)
+                {
+                    if (bandPartial[(size_t) j] <= 0.0)
+                        continue;
+
+                    const double slopeDb = j <= i ? -spreadUpDbPerBark * (i - j)
+                                                  : -spreadDownDbPerBark * (j - i);
+                    masker += bandPartial[(size_t) j] * std::pow (10.0, slopeDb / 10.0);
+                }
+
+                const double threshold = juce::jmax (absFloor, masker * std::pow (10.0, -maskingDepthDb / 10.0));
+                const double nmrDb = 10.0 * std::log10 (bandResidual[(size_t) i] / threshold);
+
+                if (nmrDb > result.nmrMaxDb)
+                {
+                    result.nmrMaxDb = nmrDb;
+                    // Report the band by its centre frequency, inverting the Bark
+                    // scale numerically (it has no closed form).
+                    const double targetBark = (double) i + 0.5;
+                    double lo = 20.0, hi = 20000.0;
+
+                    for (int it = 0; it < 40; ++it)
+                    {
+                        const double mid = 0.5 * (lo + hi);
+                        (hzToBark (mid) < targetBark ? lo : hi) = mid;
+                    }
+
+                    result.nmrWorstBandHz = 0.5 * (lo + hi);
+                }
+            }
+        }
 
         for (size_t i = 0; i < nonHarmonicPeaks.size() && i < 5; ++i)
             result.topNonHarmonicPeaks.push_back ({ nonHarmonicPeaks[i].freqHz, nonHarmonicPeaks[i].mag });
+
+        // Residual peaks are what the direction test needs: an aliased image of
+        // harmonic k sits at |k*f0 - fs| and so moves DOWN as f0 moves up,
+        // while detune sidebands, shimmer and reverb content move up with it.
+        std::sort (residualPeaks.begin(), residualPeaks.end(),
+                   [] (const BinPeak& a, const BinPeak& b) { return a.mag > b.mag; });
+
+        for (size_t i = 0; i < residualPeaks.size() && i < 8; ++i)
+            result.topResidualPeaks.push_back ({ residualPeaks[i].freqHz, residualPeaks[i].mag });
 
         return result;
     }
@@ -433,6 +598,377 @@ namespace
         }
 
         return report;
+    }
+
+    //--------------------------------------------------------------------
+    // Note-on / note-off transient windows.
+    //
+    // Playbook 4.5 asks for "single note, look at the first and last 100
+    // samples". A click is a step that is large *relative to the signal
+    // around it*, not one that is large absolutely - a 0.05 step into
+    // silence is audible, the same step mid-chord is not - so the step is
+    // reported both absolutely and against the RMS of the window just
+    // before it.
+    //--------------------------------------------------------------------
+    struct TransientWindow
+    {
+        double maxAbsStep = 0.0;
+        double rmsInWindow = 0.0;
+        double rmsBefore = 0.0;
+        double stepRelDb = -300.0;
+    };
+
+    TransientWindow analyzeTransient (const juce::AudioBuffer<float>& buffer, int atSample, int windowSamples)
+    {
+        TransientWindow t;
+
+        const auto numSamples = buffer.getNumSamples();
+        const auto numCh = buffer.getNumChannels();
+
+        if (numSamples <= 1 || windowSamples < 2)
+            return t;
+
+        const int start    = juce::jlimit (0, numSamples - 1, atSample);
+        const int end      = juce::jlimit (0, numSamples, start + windowSamples);
+        const int preStart = juce::jmax (0, start - windowSamples);
+
+        double ss = 0.0, ssPre = 0.0;
+        int n1 = 0, n2 = 0;
+
+        for (int ch = 0; ch < numCh; ++ch)
+        {
+            const auto* d = buffer.getReadPointer (ch);
+
+            for (int n = juce::jmax (1, start); n < end; ++n)
+            {
+                t.maxAbsStep = juce::jmax (t.maxAbsStep, (double) std::abs (d[n] - d[n - 1]));
+                ss += (double) d[n] * d[n];
+                ++n1;
+            }
+
+            for (int n = preStart; n < start; ++n)
+            {
+                ssPre += (double) d[n] * d[n];
+                ++n2;
+            }
+        }
+
+        t.rmsInWindow = n1 > 0 ? std::sqrt (ss / n1) : 0.0;
+        t.rmsBefore   = n2 > 0 ? std::sqrt (ssPre / n2) : 0.0;
+
+        if (t.rmsBefore > 1.0e-9 && t.maxAbsStep > 0.0)
+            t.stepRelDb = 20.0 * std::log10 (t.maxAbsStep / t.rmsBefore);
+
+        return t;
+    }
+
+    //--------------------------------------------------------------------
+    // ITU-R BS.1770-4 integrated loudness (LUFS) and 4x-oversampled true peak.
+    //
+    // Loudness matching is a LUFS job, not an RMS one (playbook 4.8: "Match
+    // with integrated LUFS, not peak"). Whole-render RMS is especially
+    // misleading for this instrument: it is diluted by however much reverb
+    // tail --tail happened to include, so two identical patches rendered with
+    // different tail lengths report different RMS.
+    //
+    // The K-weighting coefficients are derived per sample rate with the
+    // standard libebur128 derivation, which reproduces the spec's 48 kHz
+    // table exactly and generalises to the other rates this tool renders at.
+    //--------------------------------------------------------------------
+    struct Biquad
+    {
+        double b0 = 1.0, b1 = 0.0, b2 = 0.0, a1 = 0.0, a2 = 0.0;
+        double x1 = 0.0, x2 = 0.0, y1 = 0.0, y2 = 0.0;
+
+        double process (double x) noexcept
+        {
+            const double y = b0 * x + b1 * x1 + b2 * x2 - a1 * y1 - a2 * y2;
+            x2 = x1; x1 = x; y2 = y1; y1 = y;
+            return y;
+        }
+    };
+
+    void makeKWeighting (double rate, Biquad& shelf, Biquad& hp)
+    {
+        {   // Stage 1: high shelf, +4 dB.
+            const double f0 = 1681.974450955533;
+            const double G  = 3.999843853973347;
+            const double Q  = 0.7071752369554196;
+            const double K  = std::tan (juce::MathConstants<double>::pi * f0 / rate);
+            const double Vh = std::pow (10.0, G / 20.0);
+            const double Vb = std::pow (Vh, 0.4996667741545416);
+            const double a0 = 1.0 + K / Q + K * K;
+
+            shelf.b0 = (Vh + Vb * K / Q + K * K) / a0;
+            shelf.b1 = 2.0 * (K * K - Vh) / a0;
+            shelf.b2 = (Vh - Vb * K / Q + K * K) / a0;
+            shelf.a1 = 2.0 * (K * K - 1.0) / a0;
+            shelf.a2 = (1.0 - K / Q + K * K) / a0;
+        }
+
+        {   // Stage 2: RLB high-pass. Numerator is [1, -2, 1] unnormalised, per the spec.
+            const double f0 = 38.13547087602444;
+            const double Q  = 0.5003270373238773;
+            const double K  = std::tan (juce::MathConstants<double>::pi * f0 / rate);
+            const double a0 = 1.0 + K / Q + K * K;
+
+            hp.b0 = 1.0; hp.b1 = -2.0; hp.b2 = 1.0;
+            hp.a1 = 2.0 * (K * K - 1.0) / a0;
+            hp.a2 = (1.0 - K / Q + K * K) / a0;
+        }
+    }
+
+    struct LoudnessResult
+    {
+        bool valid = false;
+        double integratedLufs = -300.0;
+        double truePeak = 0.0;
+        double truePeakDb = -300.0;
+        int gatedBlocks = 0;
+    };
+
+    /*  truePeak is opt-in because it is by far the most expensive metric here:
+        4x windowed-sinc upsampling of the whole render, per channel. The
+        sound-design iteration loop runs hundreds of renders and only needs
+        LUFS and sample peak, so paying for it every time would slow that loop
+        down for nothing. Turn it on with --true-peak when a ceiling decision
+        actually depends on it.
+    */
+    LoudnessResult measureLoudness (const juce::AudioBuffer<float>& buffer, int totalSamples, double sampleRate, bool wantTruePeak)
+    {
+        LoudnessResult r;
+
+        const int numCh = juce::jmin (2, buffer.getNumChannels());
+        const int blockSamples = (int) std::round (0.4 * sampleRate); // 400 ms
+        const int hopSamples   = (int) std::round (0.1 * sampleRate); // 75% overlap
+
+        if (numCh < 1 || totalSamples < blockSamples || hopSamples < 1)
+            return r;
+
+        // K-weight each channel.
+        std::vector<std::vector<double>> weighted ((size_t) numCh);
+
+        for (int ch = 0; ch < numCh; ++ch)
+        {
+            Biquad shelf, hp;
+            makeKWeighting (sampleRate, shelf, hp);
+
+            const auto* d = buffer.getReadPointer (ch);
+            weighted[(size_t) ch].resize ((size_t) totalSamples);
+
+            for (int n = 0; n < totalSamples; ++n)
+                weighted[(size_t) ch][(size_t) n] = hp.process (shelf.process ((double) d[n]));
+        }
+
+        // Per-block mean square, summed over channels (G = 1.0 for L and R).
+        std::vector<double> blockPower;
+
+        for (int start = 0; start + blockSamples <= totalSamples; start += hopSamples)
+        {
+            double sum = 0.0;
+
+            for (int ch = 0; ch < numCh; ++ch)
+            {
+                double ss = 0.0;
+                const auto& w = weighted[(size_t) ch];
+
+                for (int n = start; n < start + blockSamples; ++n)
+                    ss += w[(size_t) n] * w[(size_t) n];
+
+                sum += ss / (double) blockSamples;
+            }
+
+            blockPower.push_back (sum);
+        }
+
+        if (blockPower.empty())
+            return r;
+
+        const auto toLufs = [] (double power) { return power > 0.0 ? -0.691 + 10.0 * std::log10 (power) : -300.0; };
+
+        const auto meanOf = [] (const std::vector<double>& v)
+        {
+            double sum = 0.0;
+            for (auto x : v) sum += x;
+            return v.empty() ? 0.0 : sum / (double) v.size();
+        };
+
+        // Absolute gate at -70 LUFS, then the -10 LU relative gate.
+        std::vector<double> pass1;
+        for (auto power : blockPower)
+            if (toLufs (power) > -70.0)
+                pass1.push_back (power);
+
+        if (pass1.empty())
+            return r;
+
+        const double relativeThreshold = toLufs (meanOf (pass1)) - 10.0;
+
+        std::vector<double> pass2;
+        for (auto power : pass1)
+            if (toLufs (power) > relativeThreshold)
+                pass2.push_back (power);
+
+        if (pass2.empty())
+            return r;
+
+        r.integratedLufs = toLufs (meanOf (pass2));
+        r.gatedBlocks = (int) pass2.size();
+
+        r.valid = true;
+
+        if (! wantTruePeak)
+            return r;
+
+        // True peak: 4x oversampled (BS.1770 Annex 2).
+        const int upSamples = totalSamples * 4;
+        std::vector<float> up ((size_t) upSamples, 0.0f);
+
+        for (int ch = 0; ch < numCh; ++ch)
+        {
+            juce::Interpolators::WindowedSinc interp;
+            interp.reset();
+            interp.process (0.25, buffer.getReadPointer (ch), up.data(), upSamples);
+
+            for (auto v : up)
+                r.truePeak = juce::jmax (r.truePeak, (double) std::abs (v));
+        }
+
+        r.truePeakDb = r.truePeak > 0.0 ? 20.0 * std::log10 (r.truePeak) : -300.0;
+
+        return r;
+    }
+
+    /** Block RMS per window, used both for the reported envelope and for timing. */
+    std::vector<double> computeEnvelope (const juce::AudioBuffer<float>& buffer, int totalSamples, int windowSamples)
+    {
+        std::vector<double> env;
+
+        const auto* readL = buffer.getReadPointer (0);
+        const auto* readR = buffer.getNumChannels() > 1 ? buffer.getReadPointer (1) : readL;
+
+        for (int start = 0; start < totalSamples; start += windowSamples)
+        {
+            const int len = juce::jmin (windowSamples, totalSamples - start);
+            double ss = 0.0;
+
+            for (int n = start; n < start + len; ++n)
+                ss += 0.5 * ((double) readL[n] * readL[n] + (double) readR[n] * readR[n]);
+
+            env.push_back (std::sqrt (ss / (double) len));
+        }
+
+        return env;
+    }
+
+    //--------------------------------------------------------------------
+    // Envelope timing (4.5: "measure actual attack/decay against the
+    // displayed ms"). Measured on a 2 ms-resolution envelope, since the
+    // onset JND is ~2 ms and finer numbers would be wasted work.
+    //
+    // The release figures are contaminated by the shared reverb tail -
+    // measure release with --param=reverb=0 or they describe the room, not
+    // the envelope.
+    //--------------------------------------------------------------------
+    struct EnvelopeTiming
+    {
+        bool valid = false;
+        double resolutionMs = 0.0;
+        double peakRms = 0.0;
+        double timeToPeakSec = 0.0;
+        double attack10to90Sec = -1.0;
+        double sustainRms = 0.0;
+        double sustainRatio = 0.0;       // sustain / peak
+        double releaseToMinus20Sec = -1.0;
+        double releaseToMinus60Sec = -1.0;
+    };
+
+    EnvelopeTiming analyzeEnvelopeTiming (const std::vector<double>& env,
+                                          double windowSec,
+                                          int firstOnSample,
+                                          int firstOffSample,
+                                          int lastOffSample,
+                                          double sampleRate)
+    {
+        EnvelopeTiming t;
+
+        if (env.size() < 4 || windowSec <= 0.0)
+            return t;
+
+        const auto idxOf = [&] (int sample)
+        {
+            return juce::jlimit (0, (int) env.size() - 1, (int) std::floor ((double) sample / (sampleRate * windowSec)));
+        };
+
+        const int onIdx  = idxOf (firstOnSample);
+        const int offIdx = idxOf (firstOffSample);
+        const int lastOffIdx = idxOf (lastOffSample);
+
+        if (offIdx <= onIdx)
+            return t;
+
+        t.valid = true;
+        t.resolutionMs = windowSec * 1000.0;
+
+        int peakIdx = onIdx;
+
+        for (int i = onIdx; i <= offIdx; ++i)
+            if (env[(size_t) i] > env[(size_t) peakIdx])
+                peakIdx = i;
+
+        t.peakRms = env[(size_t) peakIdx];
+        t.timeToPeakSec = (double) (peakIdx - onIdx) * windowSec;
+
+        if (t.peakRms > 1.0e-9)
+        {
+            int i10 = -1, i90 = -1;
+
+            for (int i = onIdx; i <= peakIdx; ++i)
+            {
+                if (i10 < 0 && env[(size_t) i] >= 0.1 * t.peakRms) i10 = i;
+                if (i90 < 0 && env[(size_t) i] >= 0.9 * t.peakRms) { i90 = i; break; }
+            }
+
+            if (i10 >= 0 && i90 >= i10)
+                t.attack10to90Sec = (double) (i90 - i10) * windowSec;
+        }
+
+        // Sustain: the last quarter of the hold region, away from the attack.
+        const int sustainStart = offIdx - juce::jmax (1, (offIdx - onIdx) / 4);
+        double sum = 0.0;
+        int count = 0;
+
+        for (int i = juce::jmax (onIdx, sustainStart); i < offIdx; ++i)
+        {
+            sum += env[(size_t) i];
+            ++count;
+        }
+
+        t.sustainRms = count > 0 ? sum / count : 0.0;
+        t.sustainRatio = t.peakRms > 1.0e-9 ? t.sustainRms / t.peakRms : 0.0;
+
+        // Release: decay below -20 / -60 dB of the level at the last note-off.
+        const double atOff = env[(size_t) lastOffIdx];
+
+        if (atOff > 1.0e-9)
+        {
+            const double t20 = atOff * std::pow (10.0, -20.0 / 20.0);
+            const double t60 = atOff * std::pow (10.0, -60.0 / 20.0);
+
+            for (int i = lastOffIdx; i < (int) env.size(); ++i)
+            {
+                if (t.releaseToMinus20Sec < 0.0 && env[(size_t) i] <= t20)
+                    t.releaseToMinus20Sec = (double) (i - lastOffIdx) * windowSec;
+
+                if (env[(size_t) i] <= t60)
+                {
+                    t.releaseToMinus60Sec = (double) (i - lastOffIdx) * windowSec;
+                    break;
+                }
+            }
+        }
+
+        return t;
     }
 }
 
@@ -471,7 +1007,27 @@ static int runTool (int argc, char* argv[])
     const double windowMs     = (double) args.getFloat ("window-ms", 50.0f);
     const int    fftSizeReq   = args.getInt ("fft-size", 8192);
     const float  clickThresh  = args.getFloat ("click-threshold", 0.2f);
+    const int    transientWin = juce::jmax (2, args.getInt ("transient-window", 100));
+
+    // Arbitrary probe points, in seconds. A note-on and a note-off are probed
+    // automatically; this is for everything else worth looking at - above all
+    // the instant a voice is stolen, which is not a MIDI event in this engine
+    // and so has no other timestamp to hang a measurement on.
+    std::vector<double> probeTimes;
+    for (auto& tok : args.getList ("probe-at", ""))
+        probeTimes.push_back (juce::jmax (0.0, (double) tok.getFloatValue()));
     const auto   outPath      = args.getString ("out", "");
+
+    std::vector<double> partialRatios;
+    for (auto& tok : args.getList ("partial-ratios", "0.5,1,2"))
+    {
+        const auto r = (double) tok.getFloatValue();
+        if (r > 0.0)
+            partialRatios.push_back (r);
+    }
+
+    if (partialRatios.empty())
+        partialRatios.push_back (1.0);
 
     std::vector<int> notes;
     for (auto& tok : args.getList ("notes", "60"))
@@ -480,7 +1036,33 @@ static int runTool (int argc, char* argv[])
     if (notes.empty())
         notes.push_back (60);
 
-    std::sort (notes.begin(), notes.end());
+    // Per-note onset/hold overrides, matched positionally to --notes. A note
+    // with no entry starts at 0 and holds for --hold, so the default schedule
+    // is exactly the old behaviour: every note on at 0, off at --hold.
+    //
+    // This is what makes voice stealing testable: eight notes at 0 plus a
+    // ninth at 3 s forces a steal on an 8-slot engine that has settled.
+    std::vector<double> onsets, holds;
+
+    for (auto& tok : args.getList ("note-onsets", ""))
+        onsets.push_back (juce::jmax (0.0, (double) tok.getFloatValue()));
+
+    for (auto& tok : args.getList ("note-holds", ""))
+        holds.push_back (juce::jmax (0.0, (double) tok.getFloatValue()));
+
+    struct ScheduledNote { int note; double onSec; double holdSec; int onSample; int offSample; };
+    std::vector<ScheduledNote> schedule;
+
+    for (size_t i = 0; i < notes.size(); ++i)
+    {
+        ScheduledNote sn {};
+        sn.note = notes[i];
+        sn.onSec = i < onsets.size() ? onsets[i] : 0.0;
+        sn.holdSec = i < holds.size() ? holds[i] : holdSeconds;
+        sn.onSample = (int) std::round (sn.onSec * sampleRate);
+        sn.offSample = sn.onSample + (int) std::round (sn.holdSec * sampleRate);
+        schedule.push_back (sn);
+    }
 
     // ---- Build the processor -------------------------------------------
     HorizonPadAudioProcessor processor;
@@ -573,14 +1155,24 @@ static int runTool (int argc, char* argv[])
     }
 
     // ---- Render ---------------------------------------------------------
-    const int noteOffSample = (int) std::round (holdSeconds * sampleRate);
-    const int totalSamples  = (int) std::round ((holdSeconds + tailSeconds) * sampleRate);
+    int firstOnSample = std::numeric_limits<int>::max();
+    int firstOffSample = std::numeric_limits<int>::max();
+    int lastOffSample = 0;
+
+    for (auto& sn : schedule)
+    {
+        firstOnSample  = juce::jmin (firstOnSample, sn.onSample);
+        firstOffSample = juce::jmin (firstOffSample, sn.offSample);
+        lastOffSample  = juce::jmax (lastOffSample, sn.offSample);
+    }
+
+    // Kept as the name the JSON has always used: the LAST note-off, i.e. the
+    // point after which only release and reverb tail remain.
+    const int noteOffSample = lastOffSample;
+    const int totalSamples  = lastOffSample + (int) std::round (tailSeconds * sampleRate);
 
     juce::AudioBuffer<float> render (2, juce::jmax (1, totalSamples));
     render.clear();
-
-    bool noteOnSent = false;
-    bool noteOffSent = false;
 
     int position = 0;
 
@@ -590,19 +1182,15 @@ static int runTool (int argc, char* argv[])
 
         juce::MidiBuffer midi;
 
-        if (! noteOnSent && position == 0)
+        // MidiBuffer::addEvent inserts in timestamp order, so the schedule
+        // does not need to be sorted.
+        for (auto& sn : schedule)
         {
-            for (auto note : notes)
-                midi.addEvent (juce::MidiMessage::noteOn (1, note, velocity), 0);
-            noteOnSent = true;
-        }
+            if (sn.onSample >= position && sn.onSample < position + blockLen)
+                midi.addEvent (juce::MidiMessage::noteOn (1, sn.note, velocity), sn.onSample - position);
 
-        if (! noteOffSent && noteOffSample >= position && noteOffSample < position + blockLen)
-        {
-            const auto offset = noteOffSample - position;
-            for (auto note : notes)
-                midi.addEvent (juce::MidiMessage::noteOff (1, note), offset);
-            noteOffSent = true;
+            if (sn.offSample >= position && sn.offSample < position + blockLen)
+                midi.addEvent (juce::MidiMessage::noteOff (1, sn.note), sn.offSample - position);
         }
 
         juce::AudioBuffer<float> block (render.getArrayOfWritePointers(), 2, position, blockLen);
@@ -645,27 +1233,39 @@ static int runTool (int argc, char* argv[])
 
     // Envelope shape: RMS per window across the whole render.
     const int windowSamples = juce::jmax (1, (int) std::round (windowMs * 0.001 * sampleRate));
-    juce::Array<double> envelope;
+    const auto envelope = computeEnvelope (render, totalSamples, windowSamples);
 
-    for (int start = 0; start < totalSamples; start += windowSamples)
-    {
-        const int len = juce::jmin (windowSamples, totalSamples - start);
-        double ss = 0.0;
+    // Timing runs on its own 2 ms envelope: the onset JND is ~2 ms, and the
+    // reporting window (--window-ms, 50 ms by default) is far too coarse to
+    // measure an attack against.
+    const double timingWindowSec = 0.002;
+    const int timingWindowSamples = juce::jmax (1, (int) std::round (timingWindowSec * sampleRate));
+    const auto timingEnvelope = computeEnvelope (render, totalSamples, timingWindowSamples);
+    const auto timing = analyzeEnvelopeTiming (timingEnvelope,
+                                               (double) timingWindowSamples / sampleRate,
+                                               firstOnSample, firstOffSample, lastOffSample, sampleRate);
 
-        for (int n = start; n < start + len; ++n)
-            ss += 0.5 * ((double) readL[n] * readL[n] + (double) readR[n] * readR[n]);
+    // Note-on and note-off transient windows.
+    const auto onsetTransient  = analyzeTransient (render, firstOnSample, transientWin);
+    const auto noteOffTransient = analyzeTransient (render, lastOffSample, transientWin);
 
-        envelope.add (std::sqrt (ss / (double) len));
-    }
+    std::vector<std::pair<double, TransientWindow>> probes;
+    for (auto t : probeTimes)
+        probes.emplace_back (t, analyzeTransient (render, (int) std::round (t * sampleRate), transientWin));
 
     // Spectral / aliasing analysis over the back half of the "hold" region
     // (settled sustain, away from the attack transient and the note-off).
+    // Region: the back half of the window in which every note is sounding,
+    // i.e. from halfway through the first note's hold to just before the
+    // earliest note-off.
     const int marginSamples = (int) std::round (0.05 * sampleRate);
-    const int regionStart = juce::jlimit (0, noteOffSample, (int) std::round (holdSeconds * 0.5 * sampleRate));
-    const int regionEnd   = juce::jmax (regionStart, noteOffSample - marginSamples);
-    const double fundamentalHz = juce::MidiMessage::getMidiNoteInHertz (notes.front());
+    const int regionStart = juce::jlimit (0, firstOffSample, firstOnSample + (firstOffSample - firstOnSample) / 2);
+    const int regionEnd   = juce::jmax (regionStart, firstOffSample - marginSamples);
+    const double fundamentalHz = juce::MidiMessage::getMidiNoteInHertz (*std::min_element (notes.begin(), notes.end()));
 
-    const auto spectral = analyzeSpectrum (render, sampleRate, regionStart, regionEnd, fundamentalHz, fftSizeReq);
+    const auto loudness = measureLoudness (render, totalSamples, sampleRate, args.has ("true-peak"));
+
+    const auto spectral = analyzeSpectrum (render, sampleRate, regionStart, regionEnd, fundamentalHz, fftSizeReq, partialRatios);
     const auto clicks = detectClicks (render, sampleRate, clickThresh);
 
     // ---- Optional WAV export ----------------------------------------------
@@ -722,6 +1322,26 @@ static int runTool (int argc, char* argv[])
         juce::Array<juce::var> noteArr;
         for (auto n : notes) noteArr.add (n);
         config->setProperty ("notes", noteArr);
+        config->setProperty ("transientWindowSamples", transientWin);
+
+        juce::Array<juce::var> ratioArr;
+        for (auto r : partialRatios) ratioArr.add (r);
+        config->setProperty ("partialRatios", ratioArr);
+
+        // The full note schedule, in --notes order, so a staggered render is
+        // reproducible from its own output.
+        juce::Array<juce::var> scheduleArr;
+
+        for (auto& sn : schedule)
+        {
+            auto* so = new juce::DynamicObject();
+            so->setProperty ("note", sn.note);
+            so->setProperty ("onSec", (double) sn.onSample / sampleRate);
+            so->setProperty ("offSec", (double) sn.offSample / sampleRate);
+            scheduleArr.add (juce::var (so));
+        }
+
+        config->setProperty ("schedule", scheduleArr);
 
         if (args.has ("preset")) config->setProperty ("preset", args.getString ("preset", ""));
         if (args.has ("solo"))   config->setProperty ("solo", args.getString ("solo", ""));
@@ -757,6 +1377,12 @@ static int runTool (int argc, char* argv[])
         levels->setProperty ("rmsDb", rms > 0.0 ? 20.0 * std::log10 (rms) : -300.0);
         levels->setProperty ("dcOffsetL", dcL);
         levels->setProperty ("dcOffsetR", dcR);
+        levels->setProperty ("integratedLufs", loudness.valid ? loudness.integratedLufs : -300.0);
+        levels->setProperty ("truePeakMeasured", args.has ("true-peak"));
+        levels->setProperty ("truePeak", loudness.truePeak);
+        levels->setProperty ("truePeakDb", loudness.truePeakDb);
+        levels->setProperty ("loudnessValid", loudness.valid);
+        levels->setProperty ("loudnessGatedBlocks", loudness.gatedBlocks);
         root->setProperty ("levels", juce::var (levels));
     }
 
@@ -779,12 +1405,73 @@ static int runTool (int argc, char* argv[])
     }
 
     {
+        auto* tr = new juce::DynamicObject();
+        tr->setProperty ("windowSamples", transientWin);
+
+        const auto addWindow = [&] (const char* name, const TransientWindow& t)
+        {
+            auto* o = new juce::DynamicObject();
+            o->setProperty ("maxAbsStep", t.maxAbsStep);
+            o->setProperty ("rmsInWindow", t.rmsInWindow);
+            o->setProperty ("rmsBefore", t.rmsBefore);
+            o->setProperty ("stepRelDb", t.stepRelDb);
+            tr->setProperty (name, juce::var (o));
+        };
+
+        addWindow ("noteOn", onsetTransient);
+        addWindow ("noteOff", noteOffTransient);
+
+        if (! probes.empty())
+        {
+            juce::Array<juce::var> probeArr;
+
+            for (auto& [atSec, t] : probes)
+            {
+                auto* o = new juce::DynamicObject();
+                o->setProperty ("atSec", atSec);
+                o->setProperty ("maxAbsStep", t.maxAbsStep);
+                o->setProperty ("rmsInWindow", t.rmsInWindow);
+                o->setProperty ("rmsBefore", t.rmsBefore);
+                o->setProperty ("stepRelDb", t.stepRelDb);
+                probeArr.add (juce::var (o));
+            }
+
+            tr->setProperty ("probes", probeArr);
+        }
+
+        root->setProperty ("transients", juce::var (tr));
+    }
+
+    {
         auto* env = new juce::DynamicObject();
         env->setProperty ("windowMs", windowMs);
-        env->setProperty ("noteOffAtSec", (double) noteOffSample / sampleRate);
+        env->setProperty ("firstNoteOnAtSec", (double) firstOnSample / sampleRate);
+        env->setProperty ("firstNoteOffAtSec", (double) firstOffSample / sampleRate);
+        env->setProperty ("noteOffAtSec", (double) noteOffSample / sampleRate); // last note-off
+
+        {
+            auto* ti = new juce::DynamicObject();
+            ti->setProperty ("valid", timing.valid);
+
+            if (timing.valid)
+            {
+                ti->setProperty ("resolutionMs", timing.resolutionMs);
+                ti->setProperty ("peakRms", timing.peakRms);
+                ti->setProperty ("timeToPeakSec", timing.timeToPeakSec);
+                ti->setProperty ("attack10to90Sec", timing.attack10to90Sec);
+                ti->setProperty ("sustainRms", timing.sustainRms);
+                ti->setProperty ("sustainRatio", timing.sustainRatio);
+                ti->setProperty ("releaseToMinus20Sec", timing.releaseToMinus20Sec);
+                ti->setProperty ("releaseToMinus60Sec", timing.releaseToMinus60Sec);
+                ti->setProperty ("note", "release figures include the shared reverb tail - "
+                                          "render with --param=reverb=0 to measure the envelope alone");
+            }
+
+            env->setProperty ("timing", juce::var (ti));
+        }
 
         juce::Array<juce::var> rmsArr;
-        for (int i = 0; i < envelope.size(); ++i) rmsArr.add (envelope[i]);
+        for (auto v : envelope) rmsArr.add (v);
         env->setProperty ("rmsPerWindow", rmsArr);
 
         root->setProperty ("envelope", juce::var (env));
@@ -802,6 +1489,27 @@ static int runTool (int argc, char* argv[])
             spec->setProperty ("spectralCentroidHz", spectral.spectralCentroidHz);
             spec->setProperty ("fftSizeUsed", spectral.fftSizeUsed);
             spec->setProperty ("windowsAveraged", spectral.windowsAveraged);
+
+            auto* alias = new juce::DynamicObject();
+            juce::Array<juce::var> ratioArr;
+            for (auto r : partialRatios) ratioArr.add (r);
+            alias->setProperty ("partialRatios", ratioArr);
+            alias->setProperty ("residualEnergyRatio", spectral.residualEnergyRatio);
+            alias->setProperty ("asrDb", spectral.asrDb);
+            alias->setProperty ("nmrMaxDb", spectral.nmrMaxDb);
+            alias->setProperty ("nmrWorstBandHz", spectral.nmrWorstBandHz);
+            juce::Array<juce::var> resPeaks;
+            for (auto& pk : spectral.topResidualPeaks)
+            {
+                auto* po = new juce::DynamicObject();
+                po->setProperty ("freqHz", pk.freqHz);
+                po->setProperty ("magnitude", pk.magnitude);
+                resPeaks.add (juce::var (po));
+            }
+            alias->setProperty ("topResidualPeaks", resPeaks);
+            alias->setProperty ("nmrNote", "NMR < 0 dB = residual is masked. Simplified model: "
+                                            "1-Bark bands, 15 dB masking depth, -12/-27 dB per Bark spread");
+            spec->setProperty ("alias", juce::var (alias));
 
             juce::Array<juce::var> peaks;
             for (auto& pk : spectral.topNonHarmonicPeaks)
