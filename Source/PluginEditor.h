@@ -53,7 +53,8 @@ private:
 
     juce::Rectangle<int> dividerBounds;
 
-    HorizonPadAudioProcessor& processor;
+    // No `processor` member here on purpose: AudioProcessorEditor already
+    // holds one, and a second shadowed copy was never read.
     horizon::ui::HorizonLookAndFeel lookAndFeel;
 
     horizon::ui::TitleBanner titleBanner;

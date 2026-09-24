@@ -169,3 +169,71 @@ while keeping Expanse at 1.0. That reaches the target, and costs some of the pur
 the preset is named for - Expanse would fall from 62% of the mix to roughly half. It
 would also steady the measurement, since more of the mix would be fundamental. It is a one-line change to the preset table plus a listening pass, and it is
 the owner's call because it is a character decision, not a level one.
+
+---
+
+## EX-003 - Expanse aliases at the top two octaves
+
+- **Date:** 2026-09-24
+- **Raised by:** Claude, during the G3 alias measurement
+- **Rule / target:** Brief `quality_targets.alias_floor_db`
+- **Status:** OPEN - accepted, with a named fix if a listening pass disagrees
+
+### What failed, and by how much
+
+Measured by rendering the same seeded note at 48 kHz and at 192 kHz and
+comparing spectra below 20 kHz at matched FFT bin width (see
+[`g3-measurements.md`](g3-measurements.md) for why the brief's own ASR/NMR
+metric does not work on this instrument).
+
+Expanse, relative to its own peak:
+
+| MIDI | Layer peak | Loudest alias | Absolute |
+|---|---|---|---|
+| 84 and below | - | -68 dB or better | below -93 dBFS |
+| 96 | -41.0 dBFS | **-27.1 dB** | -68.1 dBFS |
+| 108 | -56.6 dBFS | **-17.5 dB** | -74.1 dBFS |
+
+The cause is known and is in the code: Expanse runs its oscillator stack at
+`freq * 2`, an octave above the played note, and `LayerBase::triangleWave()`
+is a naive triangle with no polyBLEP correction. At MIDI 108 that puts the
+stack at 8372 Hz, whose upper odd harmonics fold back into the passband. No
+other layer is close: Root uses the same naive triangle but at the played
+pitch behind a 350-1250 Hz lowpass, and Clearing and Bloom use polyBLEP saws.
+
+### Why shipping this way is acceptable
+
+- **Absolute level.** -68 and -74 dBFS. In a four-layer mix where the other
+  three sit near -10 dBFS in the same region, the alias is 55-65 dB down and
+  inside any reasonable masking estimate.
+- **The register is not played.** The target genre is worship and CCM keys.
+  MIDI 96-108 is C7-C8, above the top of essentially any part this instrument
+  exists to play. Everything from MIDI 21 to 84 measures -68 dB or better.
+- **The layer is nearly silent there anyway.** Expanse's bandpass is fixed in
+  absolute Hz and does not track the note, so at MIDI 96+ the layer produces
+  -41 to -57 dBFS. The alias is loud *relative to* a layer that has almost
+  stopped contributing.
+- **Playbook 7 ranks this.** "Aliasing in the top two octaves: obvious to
+  inaudible matters enormously; inaudible to -100 dB matters not at all."
+  Nothing here is in the obvious category.
+
+### What would make it unacceptable
+
+- Any alias above **-60 dBFS absolute**, at any note.
+- A preset or future layer that makes Expanse loud above MIDI 96 - the
+  exception is written on the fact that it is not.
+- Expanse's bandpass ever being made to track the note, which would move its
+  passband up with the alias content.
+- A listening pass hearing it. It has not been listened to; the numbers above
+  are calculated, not heard.
+
+### The fix, if it is preferred
+
+Give `triangleWave()` a polyBLAMP correction at its two corners - the
+integrated-BLEP counterpart of the existing `polyBlepSaw()`, about ten lines,
+and it leaves the waveform untouched except within one sample of each corner.
+It is not done here because it changes the harmonic content of both Root and
+Expanse, and because Expanse has already been changed once today (the shimmer
+fix in [`g5-null-test.md`](g5-null-test.md) brought its octave back 57 dB).
+Two brightness changes to one layer without ears is how a pad ends up harsh.
+It belongs in the same sound-design pass as the G5 items.

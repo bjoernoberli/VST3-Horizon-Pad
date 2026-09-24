@@ -31,7 +31,6 @@ public:
     void resized() override;
 
 private:
-    const int layer;
     const juce::Colour accent;
     const juce::String caption;
     const juce::String subtitle;

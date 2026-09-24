@@ -22,8 +22,7 @@ namespace
 PadKnob::PadKnob (HorizonPadAudioProcessor& processorToUse, int layerIndex,
                   juce::String captionToUse, juce::String subtitleToUse,
                   const char* volumeParamId, const char* widthParamId)
-    : layer (layerIndex),
-      accent (Palette::layerAccents[juce::jlimit (0, kNumLayers - 1, layerIndex)]),
+    : accent (Palette::layerAccents[juce::jlimit (0, kNumLayers - 1, layerIndex)]),
       caption (std::move (captionToUse)),
       subtitle (std::move (subtitleToUse))
 {

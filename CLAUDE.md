@@ -51,6 +51,16 @@ clipping, NaN/Inf, or zipper artifacts, without opening a DAW. Key flags:
 `--param=<id>=<value>`, `--out=<wav path>`, `--list-presets`. Applied in
 order preset → solo → param, each overriding the last.
 
+### The Faust prototype
+
+`sound design/four_pads.dsp` is the sound-design source of truth every layer
+class cites by name, and `sound design/g5_layers.dsp` exposes the same layers
+dry for null testing (via Faust's `library()`, so it holds no copied DSP).
+`./tools/faust_render/build.sh` compiles either into a headless offline WAV
+renderer — no audio device needed. `sound design/reference-renders/` holds the
+signed-off renders to A/B against. These are design references, not product
+assets: nothing under `sound design/` is compiled, linked or loaded at runtime.
+
 ### Validating a structural change
 
 ```bash
@@ -67,9 +77,24 @@ cmake --build vst3sdk-build --target validator
 recommended if installed. Known gap: not re-validated against either tool
 since the four-layer/12-parameter rewrite (see README "Known gaps").
 
-There are no unit tests in this repo — correctness is verified via
-`HorizonPadSoundTool` (DSP) and the VST3 validator/pluginval (plugin format
-conformance).
+### Tests
+
+```bash
+cmake --build build-release --target HorizonPadSoundTool -j 8
+ctest --test-dir build-release --output-on-failure
+```
+
+Eight tests (~30 s), `tools/tests/dsp_tests.py`, registered by CMake. They
+drive the real DSP through `HorizonPadSoundTool` rather than unit-testing
+classes: latency, seeded-reset determinism, the 36 sample-rate x block-size
+combinations, 60 s of silence, all 18 presets — plus three regression guards
+(`shimmer_octave_present`, `width_is_rate_invariant`, `voice_steal_declick`),
+one per bug measurement has caught. **Add a regression test whenever a DSP
+defect is fixed.** Needs python3 + numpy + scipy; CMake skips registration if
+they are missing, so a plain plugin build never fails without them.
+
+`tools/measure/` holds the G3/G5 measurement scripts (alias floor, metric
+battery, reverb decay, port-vs-prototype null test).
 
 ### CI
 
@@ -155,6 +180,16 @@ scaling a shared "design surface". `HorizonLookAndFeel` centralizes
 palette/typography/panel painters; other classes are one widget each
 (`PadKnob` = one layer's VOL/WIDTH pair, `MacrosPanel`, `WheelSlider` =
 PITCH/MOD, `PresetBar`, `OutputMeter`, `FooterBar`, `TitleBanner`).
+
+## Tier P process
+
+The project runs at playbook **Tier P**. `docs/gate-status.md` is the one-page
+view of where each gate stands and what is outstanding; the per-gate artefacts
+sit beside it (`brief.md`, `g1-algorithm.md`, `g2-prototype.md`,
+`g3-measurements.md`, `g5-null-test.md`), and `docs/exceptions.md` is the
+playbook 12.5 log. **A failed measurement is either fixed or gets a dated,
+named exception** — it is not negotiable by whoever wrote the code. `brief.md`
+is owner-confirmed: do not edit the YAML, add a dated amendment beneath it.
 
 ## Working on DSP sound quality
 

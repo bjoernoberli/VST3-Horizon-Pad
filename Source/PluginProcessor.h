@@ -84,6 +84,23 @@ public:
     // --- Horizon Pad --------------------------------------------------------
     juce::AudioProcessorValueTreeState& getAPVTS() noexcept { return apvts; }
 
+    /**
+        Pins every layer's oscillator start-phase RNG so a render is
+        reproducible. Offline measurement only - the plugin never calls it.
+
+        Start phases are randomised per voice on purpose (see LayerBase's rng
+        member), which is why two renders of the same build differ. A null
+        test, a regression baseline and "two runs from reset are bit-identical"
+        all need that switched off, so the harness pins it and the product does
+        not. Each layer gets seed + its own index, or all four would draw the
+        same phase sequence and start locked together.
+    */
+    void setDeterministicSeed (juce::int64 seed) noexcept
+    {
+        for (size_t i = 0; i < layers.size(); ++i)
+            layers[i]->setRandomSeed (seed + (juce::int64) i);
+    }
+
     /** For the on-screen PITCH/MOD wheels (mouse-dragged, not host-automated). */
     horizon::PerformanceState& getPerformanceState() noexcept { return performanceState; }
 

@@ -48,7 +48,23 @@ public:
         // odr-used - capture by value rather than relying on implicit access.
         auto readGrain = [this, ratio] (int age) noexcept
         {
-            const auto readPosF = (float) writePos - (float) age * ratio;
+            // The grain starts one grainLength behind the write head and
+            // closes that gap at (ratio - 1) samples per sample, so it reads
+            // FORWARD through the history at `ratio` times normal speed:
+            //
+            //     d(readPos)/dn = d(writePos)/dn + (ratio - 1) = ratio
+            //
+            // which is what makes it an octave up at ratio = 2.
+            //
+            // This used to be `writePos - age * ratio`, whose read pointer
+            // moved at 1 - ratio = -1 samples per sample: backwards, at unity
+            // speed. Reversed playback of a sustained tone has the SAME pitch,
+            // so the shimmer octave was never produced - measured against the
+            // Faust prototype at G5, the octave partial sat 73 dB low
+            // (-83 dBFS relative to the layer peak, against the prototype's
+            // -10 dB). See docs/g5-null-test.md.
+            const auto readPosF = (float) writePos
+                                - ((float) grainLength - (float) age * (ratio - 1.0f));
             auto i0 = (int) std::floor (readPosF);
             const auto frac = readPosF - (float) i0;
             i0 = ((i0 % bufferSize) + bufferSize) % bufferSize;

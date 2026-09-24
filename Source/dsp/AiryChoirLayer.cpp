@@ -96,6 +96,8 @@ void AiryChoirLayer::renderVoice (int voiceIndex, juce::AudioBuffer<float>& targ
     for (int n = 0; n < numSamples; ++n)
     {
         const auto envGain = v.env.getNextSample();
+        // Voice-steal declick ramp; 1.0 unless this slot is being taken over.
+        const auto stealGain = nextStealGain (v);
         const auto brightness = effectiveBrightness (voiceIndex, n);
 
         float stack = 0.0f;
@@ -121,12 +123,12 @@ void AiryChoirLayer::renderVoice (int voiceIndex, juce::AudioBuffer<float>& targ
         const auto bandpassed = vs.bandpass.processSample (0, stack);
         const auto swept = vs.safetyLowpass.processSample (0, bandpassed);
 
-        const auto sweptOut = swept * envGain * level * 0.55f;
+        const auto sweptOut = swept * envGain * level * stealGain * 0.55f;
         left[n]  += sweptOut;
         right[n] += sweptOut;
 
         if (n < shimmerLen)
-            shimmerIn[n] += swept * envGain * level;
+            shimmerIn[n] += swept * envGain * level * stealGain;
     }
 }
 

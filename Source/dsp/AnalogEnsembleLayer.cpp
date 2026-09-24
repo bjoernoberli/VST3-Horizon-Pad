@@ -64,6 +64,8 @@ void AnalogEnsembleLayer::renderVoice (int voiceIndex, juce::AudioBuffer<float>&
     for (int n = 0; n < numSamples; ++n)
     {
         const auto envGain = v.env.getNextSample();
+        // Voice-steal declick ramp; 1.0 unless this slot is being taken over.
+        const auto stealGain = nextStealGain (v);
         const auto brightness = effectiveBrightness (voiceIndex, n);
 
         float stack = 0.0f;
@@ -112,7 +114,7 @@ void AnalogEnsembleLayer::renderVoice (int voiceIndex, juce::AudioBuffer<float>&
         vs.filter.setCutoffFrequency (cutoff);
 
         const auto filtered = vs.filter.processSample (0, ensemble);
-        const auto s = filtered * envGain * level;
+        const auto s = filtered * envGain * level * stealGain;
 
         left[n]  += s;
         right[n] += s;

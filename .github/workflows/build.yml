@@ -212,9 +212,9 @@ jobs:
     name: Steinberg VST3 validator
     needs: build
     runs-on: macos-14
-    # Deliberately non-blocking for the initial CI rollout. Once the validator
-    # is green and stable, drop this line to promote it to a hard gate.
-    continue-on-error: true
+    # Promoted to a hard gate on 2026-09-24: the validator passes locally
+    # (47 tests, 0 failed) and pluginval passes at strictness 10, so a failure
+    # here is now a real regression rather than CI teething. Playbook G6.
 
     steps:
       - name: Checkout
@@ -256,3 +256,35 @@ jobs:
           VALIDATOR="$(find vst3sdk-build -type f -name validator -perm -111 | head -n 1)"
           echo "Using validator: $VALIDATOR"
           "$VALIDATOR" "build/HorizonPad_artefacts/Release/VST3/Horizon Pad.vst3"
+
+  test:
+    name: DSP test suite
+    needs: build
+    runs-on: macos-14
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+
+      - name: Install Ninja
+        run: brew install ninja
+
+      - name: Cache FetchContent dependencies
+        uses: actions/cache@v6
+        with:
+          path: build/_deps
+          key: macOS-fetchcontent-${{ hashFiles('CMakeLists.txt') }}
+          restore-keys: macOS-fetchcontent-
+
+      - name: Install python dependencies
+        run: python3 -m pip install --break-system-packages numpy scipy
+
+      # The suite drives the real DSP through HorizonPadSoundTool, so the tool
+      # is the only target it needs - not the VST3 bundle.
+      - name: Build HorizonPadSoundTool
+        run: |
+          cmake -B build -G Ninja -DCMAKE_BUILD_TYPE=${{ env.BUILD_TYPE }}
+          cmake --build build --target HorizonPadSoundTool
+
+      - name: Run the test suite
+        run: ctest --test-dir build --output-on-failure

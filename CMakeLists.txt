@@ -234,3 +234,55 @@ if (APPLE)
         "-weak_framework MetalKit"
         "-framework WebKit")
 endif()
+
+# ---------------------------------------------------------------------------
+# Tests (G6)
+#
+# The suite drives the real plugin DSP through HorizonPadSoundTool rather than
+# unit-testing classes in isolation: the things worth asserting here are
+# end-to-end properties (latency, determinism from reset, behaviour across
+# sample rates and block sizes, no denormal storm after silence), plus one
+# regression test per bug that measurement has caught.
+#
+#   cmake --build build-release --target HorizonPadSoundTool
+#   ctest --test-dir build-release --output-on-failure
+#
+# Needs python3 with numpy and scipy. If they are missing the tests are not
+# registered, so a plain plugin build never fails for want of them.
+# ---------------------------------------------------------------------------
+enable_testing()
+
+find_package(Python3 COMPONENTS Interpreter)
+
+if (Python3_Interpreter_FOUND)
+    execute_process(
+        COMMAND "${Python3_EXECUTABLE}" -c "import numpy, scipy"
+        RESULT_VARIABLE HORIZON_TEST_DEPS_MISSING
+        OUTPUT_QUIET ERROR_QUIET)
+else()
+    set(HORIZON_TEST_DEPS_MISSING 1)
+endif()
+
+if (HORIZON_TEST_DEPS_MISSING)
+    message(STATUS "HorizonPad: skipping test registration (needs python3 + numpy + scipy)")
+else()
+    set(HORIZON_TEST_NAMES
+        latency_zero
+        reset_determinism
+        rate_block_matrix
+        silence_after_note
+        all_presets_safe
+        shimmer_octave_present
+        width_is_rate_invariant
+        voice_steal_declick)
+
+    foreach(test_name IN LISTS HORIZON_TEST_NAMES)
+        add_test(NAME ${test_name}
+                 COMMAND "${Python3_EXECUTABLE}"
+                         "${CMAKE_CURRENT_SOURCE_DIR}/tools/tests/dsp_tests.py"
+                         --tool "$<TARGET_FILE:HorizonPadSoundTool>"
+                         ${test_name})
+        # The matrix and preset sweeps render a lot of audio.
+        set_tests_properties(${test_name} PROPERTIES TIMEOUT 900)
+    endforeach()
+endif()

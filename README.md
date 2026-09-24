@@ -113,44 +113,40 @@ host's own per-track program list.
 
 ## Factory presets
 
-**30** factory programs (`Source/presets/Presets.cpp`), spanning lush/ambient,
+**18** factory programs (`Source/presets/Presets.cpp`), spanning lush/ambient,
 dark/brooding, bright/shimmering, movement/evolving, minimal/sparse and
-big/cinematic character. Every one is sanity-checked through
-`HorizonPadSoundTool` (see below) for clipping, NaN/Inf and DC offset before
-landing here.
+big/cinematic character.
+
+The bank was curated down from an earlier 30 on character rather than on
+level — it held twelve near-duplicates — and then loudness-matched to
+−18.0 LUFS. 17 of the 18 sit within ±1 LU of that; the exception is recorded
+as EX-002 in [`docs/exceptions.md`](docs/exceptions.md). Method and the
+survivor covering each cut are in
+[`docs/preset-curation-2026-09-23.md`](docs/preset-curation-2026-09-23.md).
+
+Every preset is checked by the test suite (`all_presets_safe`) for clipping,
+NaN/Inf and peaks above 0 dBFS on an eight-note chord.
 
 | # | Preset | Character |
 |---|--------|-----------|
-| 1 | Lagerfeuer | Warm, close and grounded — the campfire pad |
+| 1 | Lagerfeuer | Warm, close and grounded - the campfire pad |
 | 2 | Alpenglühen | Warm light spreading wide across the peaks |
 | 3 | Morgentau | Fresh and delicate, open but soft |
-| 4 | Sternenzelt | Vast and celestial — Expanse fills the whole sky |
-| 5 | Talwind | Movement and breeze — Bloom leads the way |
-| 6 | Nebelmeer | A hazy, layered fog bank stretching to the horizon |
-| 7 | Schattental | Dark and brooding, low light in a narrow valley |
-| 8 | Mitternachtsblau | A deep midnight drone, barely lit |
-| 9 | Sonnenaufgang | A bright, uplifting sunrise, slowly blooming open |
-| 10 | Bergecho | A vast mountain echo — huge, cinematic space |
-| 11 | Kristallbach | A bright, shimmering stream of crystal tones |
-| 12 | Feuerglut | A warm, smouldering ember — slow and deep |
-| 13 | Windharfe | An airborne harp caught in the wind |
-| 14 | Steinerne Ruhe | Stillness carved in stone — minimal, slow and sparse |
-| 15 | Goldstaub | Golden dust catching the light — bright and airy |
-| 16 | Tiefensog | A deep pull from below — sub-heavy and dark |
-| 17 | Lichtnebel | Soft, bright fog — gentle and balanced |
-| 18 | Sturmfront | A dramatic storm front rolling in — big and wide |
-| 19 | Blütenwind | Blossoms carried on a bright, airy breeze |
-| 20 | Dämmerlicht | Warm dusk light, gently settling |
-| 21 | Frostklang | Cold, bright and sharp — a frozen ring |
-| 22 | Ozeanweite | The vast width of an open ocean — endless reverb |
-| 23 | Kupferglanz | Warm copper shine — mid-bright and present |
-| 24 | Nachtreise | A slow journey through the night — dark and evolving |
-| 25 | Federleicht | Feather-light and delicate, barely there |
-| 26 | Gletscherklang | Icy glacier tones — bright and wide |
-| 27 | Waldlicht | Dappled forest light — organic and warm |
-| 28 | Sternenstaub | Shimmering stardust — restless and bright |
-| 29 | Ruhepuls | A slow resting pulse, with subtle motion underneath |
-| 30 | Klarheit | Clear, present and simple — a mix-friendly starting point |
+| 4 | Sternenzelt | Vast and celestial - Expanse fills the whole sky |
+| 5 | Talwind | Movement and breeze - Bloom leads the way |
+| 6 | Mitternachtsblau | A deep midnight drone, barely lit |
+| 7 | Bergecho | A vast mountain echo - huge, cinematic space |
+| 8 | Steinerne Ruhe | Stillness carved in stone - minimal, slow and sparse |
+| 9 | Goldstaub | Golden dust catching the light - bright and airy |
+| 10 | Tiefensog | A deep pull from below - sub-heavy and dark |
+| 11 | Lichtnebel | Soft, bright fog - gentle and balanced |
+| 12 | Sturmfront | A dramatic storm front rolling in - big and wide |
+| 13 | Dämmerlicht | Warm dusk light, gently settling |
+| 14 | Frostklang | Cold, bright and sharp - a frozen ring |
+| 15 | Kupferglanz | Warm copper shine - mid-bright and present |
+| 16 | Sternenstaub | Shimmering stardust - restless and bright |
+| 17 | Ruhepuls | A slow resting pulse, with subtle motion underneath |
+| 18 | Klarheit | Clear, present and simple - a mix-friendly starting point |
 
 Each preset's full twelve-value parameter set lives in
 [`Source/presets/Presets.cpp`](Source/presets/Presets.cpp).
@@ -223,39 +219,97 @@ NaN/Inf, or a stepping/zipper artifact, without opening a DAW.
 
 ---
 
-## Validating
+## Testing and validating
 
-Per the project's VST3 playbook, run Steinberg's `validator` after any
-structural change:
+The project runs at playbook **Tier P**; [`docs/gate-status.md`](docs/gate-status.md)
+is the one-page view of where each gate stands, and the artefacts sit beside it
+in [`docs/`](docs/).
+
+### Test suite
 
 ```bash
-git clone --depth 1 https://github.com/steinbergmedia/vst3sdk.git
-cd vst3sdk
-git submodule update --init --depth 1 -- base cmake pluginterfaces public.sdk
-cd ..
-
-cmake -B vst3sdk-build -S vst3sdk -DCMAKE_BUILD_TYPE=Release \
-  -DSMTG_ENABLE_VST3_PLUGIN_EXAMPLES=OFF \
-  -DSMTG_ENABLE_VSTGUI_SUPPORT=OFF \
-  -DSMTG_ENABLE_VST3_HOSTING_EXAMPLES=OFF
-cmake --build vst3sdk-build --target validator
-
-./vst3sdk-build/bin/Release/validator \
-  "build/HorizonPad_artefacts/Release/VST3/Horizon Pad.vst3"
+cmake --build build-release --target HorizonPadSoundTool -j 8
+ctest --test-dir build-release --output-on-failure
 ```
 
-`pluginval` is also recommended (`pluginval --strictness-level 10
---validate "path/to/Horizon Pad.vst3"`) if you have it installed — it was not
-available in the environment this plugin was last audited in, so its result
-against the current build is an open item (see Known gaps below).
+Eight tests, about 30 seconds, driving the real plugin DSP through
+`HorizonPadSoundTool` ([`tools/tests/dsp_tests.py`](tools/tests/dsp_tests.py)).
+Five assert end-to-end properties — zero reported latency, bit-identical
+renders from a seeded reset, all 36 sample-rate × block-size combinations
+clean, no NaN or denormal storm after 60 s of silence, all 18 factory presets
+safe. Three are regression guards, one per bug that measurement caught:
+
+| Test | Guards against |
+|---|---|
+| `shimmer_octave_present` | Expanse's +1 octave shimmer silently not transposing |
+| `width_is_rate_invariant` | WIDTH's Haas delay drifting back to a sample count |
+| `voice_steal_declick` | Voice stealing cutting a sounding voice mid-cycle |
+
+The suite needs `python3` with `numpy` and `scipy`. Without them CMake skips
+test registration, so a plain plugin build never fails for want of them.
+
+### Measurement tools
+
+[`tools/measure/`](tools/measure/) holds the G3/G5 measurement scripts — alias
+floor by sample-rate comparison, the metric battery, reverb decay per octave
+band, and the port-vs-prototype null test. Each prints a markdown table and is
+runnable on its own.
+
+### Plugin-format validators
+
+Both pass against the current build (2026-09-24):
+
+```bash
+# pluginval — strictness 10, exit 0
+pluginval --strictness-level 10 --validate "build-release/HorizonPad_artefacts/Release/VST3/Horizon Pad.vst3"
+
+# Steinberg validator — 47 tests passed, 0 failed
+git clone --depth 1 https://github.com/steinbergmedia/vst3sdk.git
+cd vst3sdk && git submodule update --init --depth 1 -- base cmake pluginterfaces public.sdk && cd ..
+cmake -B vst3sdk-build -S vst3sdk -G Ninja -DCMAKE_BUILD_TYPE=Release \
+  -DSMTG_ENABLE_VST3_PLUGIN_EXAMPLES=OFF -DSMTG_ENABLE_VSTGUI_SUPPORT=OFF \
+  -DSMTG_ENABLE_VST3_HOSTING_EXAMPLES=OFF
+cmake --build vst3sdk-build --target validator
+./vst3sdk-build/bin/Release/validator "build-release/HorizonPad_artefacts/Release/VST3/Horizon Pad.vst3"
+```
+
+On a Mac with only the Command Line Tools installed, the SDK's configure step
+fails its Xcode version check. Add `-DXCODE_VERSION=16.0` and set
+`XCODE_VERSION=16.0` in the environment — it needs both, the cache variable
+for the comparison and the environment variable to skip the `xcodebuild`
+probe.
+
+### The Faust prototype
+
+`sound design/four_pads.dsp` is the sound-design source of truth the C++ was
+ported from, and the layer classes cite it by name. It builds into an offline
+renderer that needs no audio device:
+
+```bash
+./tools/faust_render/build.sh
+./build/faust/four_pads_render --dur=10 --gate-off=4 --freq=261.63 --out=blend.wav
+```
+
+`sound design/g5_layers.dsp` exposes the same four layers dry, one per output
+channel, for the null test. It imports them with Faust's `library()` primitive
+rather than copying them, so it cannot drift from the prototype.
 
 ### Known gaps
 
-- **Not re-validated against `validator`/`pluginval` since the four-layer
-  rewrite.** Earlier revisions of this plugin (a different 8-parameter/
-  6-preset architecture) passed Steinberg's validator cleanly on both macOS
-  and Windows CI runners; that result predates the current 12-parameter/
-  four-layer/30-preset build and should be re-confirmed.
+- **Three hosts, two platforms is 1 of 3.** Ableton Live on macOS is
+  confirmed. Windows Ableton and Waveform are outstanding — the last open
+  item in G6.
+- **The CPU budget is measured but not met.** 5.03% of one core on an Apple
+  M3 Pro, against a budget written for a 2017-era dual-core i5 where the same
+  load would plausibly be 15–20%. See A-004 in
+  [`docs/brief.md`](docs/brief.md).
+- **Nothing has been listened to since 2026-09-23**, and several
+  measured-but-unheard changes have landed since — above all Expanse's
+  shimmer, which now transposes and did not before. The full list is in
+  [`docs/gate-status.md`](docs/gate-status.md).
+- **Two open exceptions**, both accepted with written triggers: EX-002
+  (Sternenzelt sits below the loudness-matched bank) and EX-003 (Expanse
+  aliases at MIDI 96–108). See [`docs/exceptions.md`](docs/exceptions.md).
 - **Code-signing / notarization**: the macOS `.pkg` is unsigned (no Apple
   Developer ID on this project) — Gatekeeper will warn on first launch (see
   Installing below for the workaround). This needs the project owner's own
@@ -377,7 +431,7 @@ Source/
     OctaveShimmer.h                Two-grain +1-octave pitch shifter (Expanse's shimmer send)
     FxChain.{h,cpp}                Shared stereo reverb send
   presets/
-    Presets.{h,cpp}                30 factory programs + parameter IDs
+    Presets.{h,cpp}                18 factory programs + parameter IDs
     UserPresetStore.{h,cpp}        On-disk user preset library (message-thread only)
   gui/
     HorizonLookAndFeel.{h,cpp}     Palette, typography, shared panel/card painters
@@ -391,6 +445,30 @@ Source/
 tools/
   install_plugin.sh                Local dev build+install to ~/Library/Audio/Plug-Ins/VST3
   sound_tool/Main.cpp              HorizonPadSoundTool - offline DSP render+analysis CLI
+  tests/dsp_tests.py               The CTest suite (G6)
+  measure/                         G3/G5 measurement scripts
+    alias_check.py                 Alias floor, by 48 vs 192 kHz comparison
+    g3_metrics.py                  Rate/block matrix, CPU, envelope, denormals
+    reverb_edr.py                  Reverb decay per octave band
+    null_test.py                   Port vs prototype, per layer
+  faust_render/                    Offline renderer for the Faust prototype
+    render_arch.cpp                Faust architecture file: headless WAV out
+    build.sh                       faust + c++ -> build/faust/*_render
+sound design/
+  four_pads.dsp                    The Faust prototype - sound-design source of truth
+  g5_layers.dsp                    The same four layers, dry, for the null test
+  Horizon_Pad_VST3_Handoff.md      Control-to-GUI mapping from the original handoff
+  reference-renders/               Signed-off renders: per layer + the full blend
+docs/
+  gate-status.md                   One page: where every Tier P gate stands
+  brief.md                         G0 sonic brief + dated amendments
+  g1-algorithm.md                  G1 algorithm audit against the playbook
+  g2-prototype.md                  G2 prototype artefact
+  g3-measurements.md               G3 metric table
+  g5-null-test.md                  G5 port-vs-prototype characterisation
+  exceptions.md                    Playbook 12.5 exception log
+  preset-curation-2026-09-23.md    How the bank went from 30 to 18
+  dsp-audit-2026-09-20.md          DSP invariant audit
 packaging/
   macos/build-pkg.sh               Builds the unsigned .pkg installer
   macos/scripts/postinstall        Runs on-Mac after install: re-signs + verifies

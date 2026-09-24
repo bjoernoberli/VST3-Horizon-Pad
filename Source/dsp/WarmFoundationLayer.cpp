@@ -58,6 +58,8 @@ void WarmFoundationLayer::renderVoice (int voiceIndex, juce::AudioBuffer<float>&
     for (int n = 0; n < numSamples; ++n)
     {
         const auto envGain = v.env.getNextSample();
+        // Voice-steal declick ramp; 1.0 unless this slot is being taken over.
+        const auto stealGain = nextStealGain (v);
         const auto brightness = effectiveBrightness (voiceIndex, n);
 
         auto advance = [&] (int idx, float freqHz) noexcept
@@ -100,7 +102,7 @@ void WarmFoundationLayer::renderVoice (int voiceIndex, juce::AudioBuffer<float>&
         vs.filter.setCutoffFrequency (cutoff);
 
         const auto filtered = vs.filter.processSample (0, body);
-        const auto s = filtered * envGain * level;
+        const auto s = filtered * envGain * level * stealGain;
 
         left[n]  += s;
         right[n] += s;

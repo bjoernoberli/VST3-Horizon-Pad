@@ -60,6 +60,8 @@ void MotionPadLayer::renderVoice (int voiceIndex, juce::AudioBuffer<float>& targ
     for (int n = 0; n < numSamples; ++n)
     {
         const auto envGain = v.env.getNextSample();
+        // Voice-steal declick ramp; 1.0 unless this slot is being taken over.
+        const auto stealGain = nextStealGain (v);
         const auto brightness = effectiveBrightness (voiceIndex, n);
 
         float stack = 0.0f;
@@ -87,7 +89,7 @@ void MotionPadLayer::renderVoice (int voiceIndex, juce::AudioBuffer<float>& targ
         vs.tremPhase = wrapPhase (vs.tremPhase + 3.2f * invSr);
         const auto trem = std::sin (vs.tremPhase * juce::MathConstants<float>::twoPi) * 0.35f + 0.65f;
 
-        const auto s = filtered * envGain * level * trem;
+        const auto s = filtered * envGain * level * trem * stealGain;
 
         left[n]  += s;
         right[n] += s;

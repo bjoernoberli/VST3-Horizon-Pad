@@ -86,13 +86,18 @@ public:
         scratch.setSize (2, maxBlockSize, false, true, false);
         scratch.clear();
 
+        stealFadeSamples = juce::jmax (1, (int) (kStealFadeSeconds * newSampleRate));
+
         for (auto& v : voices)
         {
             v.env.setSampleRate (newSampleRate);
             v.env.reset();
             v.active = false;
+            clearStealState (v);
         }
 
+        maxWidthSamples = juce::jmax (1.0f, (float) (kMaxWidthSeconds * newSampleRate));
+        widthDelay.setMaximumDelayInSamples ((int) std::ceil (maxWidthSamples) + 4);
         widthDelay.prepare ({ newSampleRate, (juce::uint32) maxBlockSize, 1 });
         widthDelay.setDelay (0.0f);
         smoothedWidthSamples.reset (newSampleRate, 0.05);
@@ -117,6 +122,7 @@ public:
         {
             v.env.reset();
             v.active = false;
+            clearStealState (v);
         }
 
         scratch.clear();
@@ -161,7 +167,7 @@ public:
         fully-wide Haas split the old shared WIDTH macro used. */
     void setWidth (float newWidth) noexcept
     {
-        smoothedWidthSamples.setTargetValue (juce::jlimit (0.0f, 1.0f, newWidth) * (float) kMaxWidthSamples);
+        smoothedWidthSamples.setTargetValue (juce::jlimit (0.0f, 1.0f, newWidth) * maxWidthSamples);
     }
 
     /** Not audio-thread-critical - call once, e.g. from prepareToPlay() or
@@ -181,9 +187,47 @@ public:
         modAmount = newModAmount;
     }
 
-    void noteOn (int voiceIndex, int midiNote, float velocity)
+    /**
+        Starts `midiNote` in this slot, declicking the handover if the slot is
+        still sounding.
+
+        Taking over a slot used to be a hard reset of the envelope and the
+        oscillator phases mid-cycle. Measured with HorizonPadSoundTool
+        (`--note-onsets` to force a steal, `--probe-at` on the steal instant),
+        that step was -2..-11 dB relative to the signal, against -18..-23 dB
+        for a note-on into a free slot: an audible click, and easy to provoke
+        with a sustain pedal and more than kMaxVoices notes held.
+
+        So a sounding slot is ramped to zero over kStealFadeSeconds first and
+        the incoming note is started once the ramp lands - at the next block
+        boundary after it completes, which is at most one block late. That is
+        well under the ~2 ms onset JND for every attack this instrument can
+        produce (the ATTACK macro floors out at 12 ms), and a pad has no
+        transient to smear.
+    */
+    void startNote (int voiceIndex, int midiNote, float velocity)
     {
         auto& v = voices[(size_t) voiceIndex];
+
+        // A silent slot has nothing to click: take it over immediately.
+        if (! v.active)
+        {
+            beginNote (voiceIndex, midiNote, velocity);
+            return;
+        }
+
+        v.pendingNote = midiNote;
+        v.pendingVelocity = velocity;
+        v.notePending = true;
+
+        if (v.stealFadeRemaining <= 0)
+            v.stealFadeRemaining = stealFadeSamples;
+    }
+
+    void beginNote (int voiceIndex, int midiNote, float velocity)
+    {
+        auto& v = voices[(size_t) voiceIndex];
+        clearStealState (v);
         v.midiNote = midiNote;
         v.frequency = (float) juce::MidiMessage::getMidiNoteInHertz (midiNote);
         v.velocity = velocity;
@@ -208,11 +252,15 @@ public:
     }
 
     /** Immediately silences a voice (used on allNotesOff / reset). */
+    /** Hard stop, no declick ramp - for panic / allNotesOff(immediately),
+        where the host wants silence now. Ordinary note starts go through
+        startNote(), which ramps. */
     void killVoice (int voiceIndex)
     {
         auto& v = voices[(size_t) voiceIndex];
         v.env.reset();
         v.active = false;
+        clearStealState (v);
     }
 
     /**
@@ -236,6 +284,16 @@ public:
 
             for (int n = 0; n < numSamples; ++n)
                 bb[n] = smoothedBrightness.getNextValue();
+        }
+
+        // A stolen slot whose declick ramp finished during the last block
+        // starts its queued note here, before anything is rendered.
+        for (int i = 0; i < kMaxVoices; ++i)
+        {
+            auto& v = voices[(size_t) i];
+
+            if (v.notePending && v.stealFadeRemaining <= 0)
+                beginNote (i, v.pendingNote, v.pendingVelocity);
         }
 
         for (int i = 0; i < kMaxVoices; ++i)
@@ -292,7 +350,7 @@ public:
                 widthDelay.setDelay (widthSamples);
                 const auto delayedSample = widthDelay.popSample (0);
 
-                const auto widthFraction = widthSamples * (1.0f / (float) kMaxWidthSamples);
+                const auto widthFraction = widthSamples / maxWidthSamples;
                 const auto blendBack = kMonoSafetyBlend * widthFraction;
                 delayed[n] = delayedSample * (1.0f - blendBack) + source[n] * blendBack;
             }
@@ -303,6 +361,16 @@ public:
     }
 
     bool isVoiceActive (int voiceIndex) const noexcept { return voices[(size_t) voiceIndex].active; }
+
+    /**
+        Pins this layer's start-phase RNG so a render is reproducible.
+
+        The plugin never calls this: per-voice random start phases are
+        deliberate (see the rng member). The offline harness does, because
+        "two runs from reset are bit-identical" is how a null test and a
+        regression baseline are possible at all.
+    */
+    void setRandomSeed (juce::int64 seed) noexcept { rng.setSeed (seed); }
 
 protected:
     struct Voice
@@ -316,6 +384,13 @@ protected:
         // See freezeBrightnessForActiveVoices() below.
         bool brightnessFrozen = false;
         float frozenBrightness = 1.0f;
+
+        // Voice-steal declick, see startNote(). stealFadeRemaining counts the
+        // ramp down to zero; notePending marks a note-on waiting for it.
+        int stealFadeRemaining = 0;
+        bool notePending = false;
+        int pendingNote = -1;
+        float pendingVelocity = 0.0f;
     };
 
     /** The FILTER macro value a voice should render with at this sample: its
@@ -329,6 +404,31 @@ protected:
     {
         const auto& v = voices[(size_t) voiceIndex];
         return v.brightnessFrozen ? v.frozenBrightness : brightnessBlock.getSample (0, sampleIndex);
+    }
+
+    /**
+        This voice's voice-steal declick gain for one sample, advancing the
+        ramp. Layers multiply their per-sample output by it, so a slot being
+        taken over fades instead of cutting - see startNote().
+
+        Once the ramp has landed the voice stays silent until render() starts
+        the queued note at the next block boundary.
+    */
+    float nextStealGain (Voice& v) noexcept
+    {
+        if (v.stealFadeRemaining <= 0)
+            return v.notePending ? 0.0f : 1.0f;
+
+        --v.stealFadeRemaining;
+        return (float) v.stealFadeRemaining / (float) stealFadeSamples;
+    }
+
+    static void clearStealState (Voice& v) noexcept
+    {
+        v.stealFadeRemaining = 0;
+        v.notePending = false;
+        v.pendingNote = -1;
+        v.pendingVelocity = 0.0f;
     }
 
     /** Subclass hooks. */
@@ -406,8 +506,33 @@ protected:
     juce::AudioBuffer<float> brightnessBlock;
 
     /** This layer's own WIDTH knob - see setWidth() and render(). */
-    static constexpr int kMaxWidthSamples = 90;
-    juce::dsp::DelayLine<float, juce::dsp::DelayLineInterpolationTypes::Linear> widthDelay { kMaxWidthSamples + 4 };
+    /** Voice-steal declick ramp length. 5 ms is long enough to remove the
+        step (a 5 ms raised ramp has no energy above roughly 200 Hz worth
+        speaking of) and short enough to be well inside the ~2 ms onset JND's
+        tolerance for a pad with a >=12 ms attack. */
+    static constexpr float kStealFadeSeconds = 0.005f;
+    int stealFadeSamples = 1;
+
+    /**
+        Maximum WIDTH delay, as a TIME.
+
+        This used to be a flat 90 samples, which made the Haas time a function
+        of the sample rate: 2.04 ms at 44.1 kHz but 0.47 ms at 192 kHz, a
+        factor of 4.3. The precedence effect that WIDTH trades on is a
+        time-domain phenomenon (and the inter-channel time JND is ~10-20 us),
+        so the same knob produced a different stereo image per rate, and the
+        mono comb notch it has to stay clear of moved with it.
+
+        Anchored at 90 samples / 48 kHz so behaviour at 48 kHz is unchanged,
+        and 44.1 / 88.2 / 96 / 176.4 / 192 kHz now match it in time instead of
+        in samples.
+    */
+    static constexpr float kMaxWidthSeconds = 90.0f / 48000.0f;
+
+    /** kMaxWidthSeconds in samples at the current rate; set in prepare(). */
+    float maxWidthSamples = 90.0f;
+
+    juce::dsp::DelayLine<float, juce::dsp::DelayLineInterpolationTypes::Linear> widthDelay { 512 };
     juce::SmoothedValue<float> smoothedWidthSamples;
     bool delayLeftChannel = false;
 
@@ -416,6 +541,10 @@ protected:
     float modAmount = 0.0f;
 
     /** Cheap noise source, kept for any layer that still wants a bit of texture. */
+    /** Oscillator/LFO start phases are randomised per voice so that two
+        instances in the same project do not start phase-locked and sum
+        coherently - deliberate, and the reason two renders of the same build
+        are not bit-identical. setRandomSeed() pins it for measurement. */
     juce::Random rng { juce::Random::getSystemRandom().nextInt64() };
 };
 

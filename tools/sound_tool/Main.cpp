@@ -143,6 +143,10 @@ namespace
             "                         to capture release + reverb tail (default 6.0)\n"
             "  --sample-rate=48000    Render sample rate in Hz (default 48000)\n"
             "  --block=512            Block size passed to processBlock (default 512)\n"
+            "  --seed=1               Pin every layer's oscillator start-phase RNG so\n"
+            "                         the render is reproducible. Off by default: the\n"
+            "                         plugin randomises phases per voice deliberately.\n"
+            "                         Required for null tests and regression baselines.\n"
             "  --note-onsets=0,0,3    Per-note onset times in seconds, matched positionally\n"
             "                         to --notes. Missing entries default to 0.\n"
             "  --note-holds=6,6,2     Per-note hold durations in seconds, matched positionally\n"
@@ -1068,6 +1072,14 @@ static int runTool (int argc, char* argv[])
     HorizonPadAudioProcessor processor;
     processor.prepareToPlay (sampleRate, blockSize);
 
+    // Oscillator start phases are randomised per voice on purpose, so renders
+    // vary run to run. --seed pins them, which is what makes a null test, a
+    // regression baseline or an A/B of a code change meaningful. Without it,
+    // any metric that depends on phase (peak, spectral ratios, DC) has to be
+    // averaged over several runs before it means anything.
+    if (args.has ("seed"))
+        processor.setDeterministicSeed ((juce::int64) args.getInt ("seed", 1));
+
     // 1) Optional factory preset.
     if (args.has ("preset"))
     {
@@ -1323,6 +1335,9 @@ static int runTool (int argc, char* argv[])
         for (auto n : notes) noteArr.add (n);
         config->setProperty ("notes", noteArr);
         config->setProperty ("transientWindowSamples", transientWin);
+        // Reported so the test suite can assert invariant #11 (latency is
+        // declared AND verified) without a separate C++ harness.
+        config->setProperty ("latencySamples", processor.getLatencySamples());
 
         juce::Array<juce::var> ratioArr;
         for (auto r : partialRatios) ratioArr.add (r);

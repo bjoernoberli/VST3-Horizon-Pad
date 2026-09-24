@@ -572,17 +572,18 @@ void HorizonPadAudioProcessor::noteOn (int midiNote, float velocity)
 {
     const auto slot = findFreeVoiceSlot();
 
-    for (auto* layer : layers)
-        layer->killVoice (slot);
-
     voiceSlots[(size_t) slot].midiNote = midiNote;
     voiceSlots[(size_t) slot].order = ++voiceOrderCounter;
 
     // Ambient pads want a gentle velocity curve, not a linear one.
     const auto shaped = 0.35f + 0.65f * std::sqrt (juce::jlimit (0.0f, 1.0f, velocity));
 
+    // startNote() replaces the old killVoice()+noteOn() pair: if the slot is
+    // still sounding (tier 2 or 3 of findFreeVoiceSlot()), the layer ramps it
+    // out over 5 ms and starts the new note when the ramp lands, instead of
+    // cutting it mid-cycle. See LayerBase::startNote().
     for (auto* layer : layers)
-        layer->noteOn (slot, midiNote, shaped);
+        layer->startNote (slot, midiNote, shaped);
 }
 
 void HorizonPadAudioProcessor::noteOff (int midiNote)

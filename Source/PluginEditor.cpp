@@ -4,7 +4,6 @@ using namespace horizon::ui;
 
 HorizonPadAudioProcessorEditor::HorizonPadAudioProcessorEditor (HorizonPadAudioProcessor& processorToUse)
     : AudioProcessorEditor (processorToUse),
-      processor (processorToUse),
       presetBar (processorToUse),
       pitchWheel (processorToUse, WheelSlider::Kind::pitch),
       modWheel (processorToUse, WheelSlider::Kind::mod),

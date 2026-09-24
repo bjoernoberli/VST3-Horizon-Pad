@@ -130,11 +130,17 @@ open_questions:
 
 ## Decisions taken at promotion (2026-09-22)
 
-1. **Prototype / null-test basis.** Faust is reconstructed for **Root only**, as a
+1. ~~**Prototype / null-test basis.** Faust is reconstructed for **Root only**, as a
    pilot, to find out whether the C++ can null against a rebuilt prototype at all.
    The other three layers proceed without one, which is a deviation from 6.1's G5 and
    needs a dated 12.5 exception each. 0.1's Tier P definition of null testing
-   ("whole-plugin, vs previous release") governs in the meantime.
+   ("whole-plugin, vs previous release") governs in the meantime.~~
+
+   **SUPERSEDED 2026-09-24, owner-approved.** The premise was false: the original
+   prototype exists for all four layers and is now in `sound design/` (see A-001).
+   Nothing is reconstructed, no 12.5 exceptions are owed, and G5 runs per-layer
+   against the original. See [`g1-algorithm.md`](g1-algorithm.md) for what will and
+   will not null.
 2. **Output level.** Re-stage to a typical preset chord peak of **-3 dBFS**.
 3. **Presets.** Curate 30 down to **~18**, loudness-matched. Measured spread today is
    9.1 dB RMS.
@@ -144,6 +150,92 @@ open_questions:
    first draft read as "no editing surface at all" - there is some depth, it is
    just far shallower than Vital's and lives on performance controls.
 6. **Per-layer tone knobs.** Confirmed OUT of scope, 2026-09-23.
+
+## Amendments after confirmation
+
+The YAML above is the owner-confirmed G0 artefact and is left as confirmed. Facts
+that have changed since are recorded here instead, dated, rather than edited into it.
+
+### A-001 - the Faust prototype was never lost (2026-09-24)
+
+Promotion decision #1 below, and the third entry under `open_questions`, both assume
+there is no Faust source and commit the project to reconstructing one for Root as a
+pilot, with three dated 12.5 exceptions owed for the other layers.
+
+That assumption is wrong. `four_pads.dsp` (177 lines, all four layers, header
+`STATUS: validated, ready for VST3 port`) sits one directory above the repo in
+`../sound design/`, together with the per-layer renders, the five blend mixes and
+the handoff document. It is unversioned and outside the repo, which is how it came
+to be presumed gone. Details in [`g1-algorithm.md`](g1-algorithm.md).
+
+Therefore:
+
+- Nothing needs reconstructing; G2 becomes import-and-verify for all four layers.
+- **The three 12.5 exceptions are not owed.** Decision #1 should be amended, not
+  executed - owner's call, since it was an owner decision.
+- `open_questions` entry 3 ("Three of four layers will ship without a Faust
+  prototype") is void.
+- **DONE 2026-09-24:** the prototype is under version control in `sound design/`,
+  renders included. The tension with `must_do`'s "no samples, audio files ...
+  anywhere in the repo" was resolved by A-003 below.
+
+### A-002 - first G6 evidence (2026-09-24)
+
+Reported by the owner: the **Steinberg validator ran green on CI**, and a **smoke
+test in Ableton Live** behaved correctly. This is the first validation evidence since
+the four-layer/12-parameter rewrite and retires the first README "Known gaps" bullet.
+
+G6 is **not** closed by it. Still outstanding: pluginval at strictness 10, CTest
+cancellation tests (the repo has no tests and `CMakeLists.txt` has no test wiring at
+all), and two more hosts on a second platform. CI's validator step is also
+`continue-on-error: true`, so it reports rather than gates.
+
+### A-003 - `must_do`'s "no audio files" rule is about the product, not the repo (2026-09-24)
+
+`must_do` says "Everything synthesised in code: no samples, no audio files, no bitmap
+artwork." Read literally that forbids the prototype's reference renders from being
+committed. Owner-approved 2026-09-24: **the rule governs what the plugin ships and
+loads at runtime, not what the repository stores for design reference.**
+
+The binding form of the rule: Horizon Pad contains no sampled or pre-rendered audio
+and no bitmap artwork in its build output, and loads none at runtime - every sound
+and every pixel is generated in DSP or paint code. Nothing under `sound design/` is
+compiled, linked, packaged or read by the plugin.
+
+Now committed under `sound design/` (~1.0 MB):
+
+| File | What it is |
+|---|---|
+| `four_pads.dsp` | the prototype, all four layers - the design source of truth |
+| `Horizon_Pad_VST3_Handoff.md` | control-to-GUI mapping from the original handoff |
+| `reference-renders/pad{1..4}_*.mp3` | per-layer renders of the prototype |
+| `reference-renders/four_pads_full_blend_v5.mp3` | the blend the owner signed off on |
+
+The renders are the "and heard" half of G2's artefact and the listening reference for
+G5. `_Archive/` (v1-v4 and six earlier previews) was left out - superseded takes.
+
+### A-004 - CPU measured, budget not yet met (2026-09-24)
+
+`cpu_budget` is "< 8% of one core ... minimum target machine: a machine that
+ran Ableton Live 10 comfortably (a ~2017-2018 dual-core i5)".
+
+Measured 2026-09-24: **5.03%** of one core at 48 kHz / 64 samples, 8 voices,
+all four layers up, REVERB at 50%, Release - and **0.60%** over a 60 s silent
+tail, so there is no denormal problem.
+
+**That measurement was taken on an Apple M3 Pro and therefore does not close
+the budget.** Single-core throughput differs from the target machine by
+roughly 3-4x, which would put the same load near 15-20% of a core there. The
+figure proves the plugin is not pathologically expensive and that silence is
+cheap; it says nothing about the machine the budget was written for. One run
+on a low-end x86 laptop is owed, and the Windows validation pass is the
+natural place for it.
+
+### A-005 - gate tracking moved to its own page (2026-09-24)
+
+Gate status is no longer tracked in this document. It lives in
+[`gate-status.md`](gate-status.md), which links the artefact for each gate.
+This file stays what it is: the G0 brief and its dated amendments.
 
 ## Where the exceptions go
 
