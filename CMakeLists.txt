@@ -274,7 +274,16 @@ else()
         all_presets_safe
         shimmer_octave_present
         width_is_rate_invariant
-        voice_steal_declick)
+        voice_steal_declick
+        root_sub_present
+        clearing_ensemble_present
+        bloom_tremolo_survives_chords
+        keyboard_level_span
+        width_mono_safe_and_level_flat
+        reverb_level_flat
+        sustain_pedal_holds
+        low_register_stays_musical
+        bass_is_mono)
 
     foreach(test_name IN LISTS HORIZON_TEST_NAMES)
         add_test(NAME ${test_name}

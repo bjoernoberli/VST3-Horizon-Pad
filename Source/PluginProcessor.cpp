@@ -121,11 +121,14 @@ juce::AudioProcessorValueTreeState::ParameterLayout HorizonPadAudioProcessor::cr
     // scaling they were the pre-match values, which left a fresh instance
     // ~3.4 dB hotter than every preset in the bank and peaking above the output
     // limiter's knee - i.e. the very first thing a user heard was the only
-    // patch in the product that was being limited.
-    addPercent (ParamID::rootVolume,     "Root",     0.508f);
-    addPercent (ParamID::clearingVolume, "Clearing", 0.203f);
-    addPercent (ParamID::expanseVolume,  "Expanse",  0.102f);
-    addPercent (ParamID::bloomVolume,    "Bloom",    0.169f);
+    // patch in the product that was being limited. Sound-design v2
+    // (2026-09-26) rescaled Lagerfeuer again (net -0.4 dB after the register pass), when WIDTH stopped
+    // losing level and REVERB stopped dipping (docs/sound-design-v2.md), and
+    // these follow it.
+    addPercent (ParamID::rootVolume,     "Root",     0.477f);
+    addPercent (ParamID::clearingVolume, "Clearing", 0.191f);
+    addPercent (ParamID::expanseVolume,  "Expanse",  0.096f);
+    addPercent (ParamID::bloomVolume,    "Bloom",    0.159f);
     addPercent (ParamID::attackMacro,    "Attack",   0.40f);
     addPercent (ParamID::releaseMacro,   "Release",  0.40f);
     addPercent (ParamID::filterMacro,    "Filter",   0.30f);
@@ -145,13 +148,6 @@ HorizonPadAudioProcessor::HorizonPadAudioProcessor()
       apvts (*this, nullptr, "PARAMETERS", createParameterLayout())
 {
     layers = { &warmFoundation, &analogEnsemble, &airyChoir, &motionPad };
-
-    // Alternate which channel each layer's WIDTH delay lands on (see
-    // LayerBase::setWidthLeadChannel()'s doc comment) so the four layers'
-    // precedence-effect pulls roughly cancel across the mix instead of every
-    // layer pulling the same way.
-    for (int i = 0; i < kNumLayers; ++i)
-        layers[(size_t) i]->setWidthLeadChannel (i % 2 == 1);
 
     for (int i = 0; i < kNumLayers; ++i)
     {
@@ -518,7 +514,7 @@ void HorizonPadAudioProcessor::applyUserPreset (int index)
 //==============================================================================
 int HorizonPadAudioProcessor::findFreeVoiceSlot()
 {
-    // 1) A slot that is neither held nor still sounding.
+    // 1) A slot that is neither held, sustained nor still sounding.
     for (int i = 0; i < kMaxVoices; ++i)
     {
         if (voiceSlots[(size_t) i].midiNote >= 0)
@@ -533,53 +529,70 @@ int HorizonPadAudioProcessor::findFreeVoiceSlot()
             return i;
     }
 
-    // 2) The oldest slot that has been released but is still ringing out.
-    int best = -1;
-    juce::uint32 bestOrder = std::numeric_limits<juce::uint32>::max();
-
-    for (int i = 0; i < kMaxVoices; ++i)
+    // Oldest slot matching `eligible`, or -1.
+    auto oldest = [this] (auto eligible)
     {
-        if (voiceSlots[(size_t) i].midiNote >= 0)
-            continue;
+        int best = -1;
+        auto bestOrder = std::numeric_limits<juce::uint32>::max();
 
-        if (voiceSlots[(size_t) i].order < bestOrder)
+        for (int i = 0; i < kMaxVoices; ++i)
         {
-            bestOrder = voiceSlots[(size_t) i].order;
-            best = i;
-        }
-    }
+            const auto& slot = voiceSlots[(size_t) i];
 
-    if (best >= 0)
+            if (eligible (slot) && slot.order < bestOrder)
+            {
+                bestOrder = slot.order;
+                best = i;
+            }
+        }
+
         return best;
+    };
 
-    // 3) Everything is held: steal the oldest.
-    bestOrder = std::numeric_limits<juce::uint32>::max();
-    best = 0;
+    // 2) The oldest slot that has been released but is still ringing out.
+    if (const auto s = oldest ([] (const VoiceSlot& v) { return v.midiNote < 0; }); s >= 0)
+        return s;
 
-    for (int i = 0; i < kMaxVoices; ++i)
-    {
-        if (voiceSlots[(size_t) i].order < bestOrder)
-        {
-            bestOrder = voiceSlots[(size_t) i].order;
-            best = i;
-        }
-    }
+    // 3) The oldest note the sustain pedal is holding after its key came up -
+    //    a player notices a held key cutting out far sooner than a pedalled one.
+    if (const auto s = oldest ([] (const VoiceSlot& v) { return v.midiNote >= 0 && ! v.keyDown; }); s >= 0)
+        return s;
 
-    return best;
+    // 4) Everything is held: steal the oldest.
+    return juce::jmax (0, oldest ([] (const VoiceSlot&) { return true; }));
+}
+
+void HorizonPadAudioProcessor::releaseSlot (int slot)
+{
+    voiceSlots[(size_t) slot].midiNote = -1;
+    voiceSlots[(size_t) slot].keyDown = false;
+
+    for (auto* layer : layers)
+        layer->noteOff (slot);
 }
 
 void HorizonPadAudioProcessor::noteOn (int midiNote, float velocity)
 {
+    // The same key struck again while its previous note is still held or
+    // pedalled: release the old voice into its tail rather than stacking a
+    // second copy on top. With the sustain pedal down, repeated notes would
+    // otherwise pile up identical voices, eat the voice budget and phase
+    // against each other.
+    for (int i = 0; i < kMaxVoices; ++i)
+        if (voiceSlots[(size_t) i].midiNote == midiNote)
+            releaseSlot (i);
+
     const auto slot = findFreeVoiceSlot();
 
     voiceSlots[(size_t) slot].midiNote = midiNote;
+    voiceSlots[(size_t) slot].keyDown = true;
     voiceSlots[(size_t) slot].order = ++voiceOrderCounter;
 
     // Ambient pads want a gentle velocity curve, not a linear one.
     const auto shaped = 0.35f + 0.65f * std::sqrt (juce::jlimit (0.0f, 1.0f, velocity));
 
     // startNote() replaces the old killVoice()+noteOn() pair: if the slot is
-    // still sounding (tier 2 or 3 of findFreeVoiceSlot()), the layer ramps it
+    // still sounding (tiers 2-4 of findFreeVoiceSlot()), the layer ramps it
     // out over 5 ms and starts the new note when the ramp lands, instead of
     // cutting it mid-cycle. See LayerBase::startNote().
     for (auto* layer : layers)
@@ -590,21 +603,39 @@ void HorizonPadAudioProcessor::noteOff (int midiNote)
 {
     for (int i = 0; i < kMaxVoices; ++i)
     {
-        if (voiceSlots[(size_t) i].midiNote != midiNote)
+        auto& slot = voiceSlots[(size_t) i];
+
+        if (slot.midiNote != midiNote || ! slot.keyDown)
             continue;
 
-        voiceSlots[(size_t) i].midiNote = -1;
-
-        for (auto* layer : layers)
-            layer->noteOff (i);
+        if (sustainPedalDown)
+            slot.keyDown = false;   // the pedal holds it; released when the pedal comes up
+        else
+            releaseSlot (i);
     }
+}
+
+void HorizonPadAudioProcessor::setSustainPedal (bool down)
+{
+    if (down == sustainPedalDown)
+        return;
+
+    sustainPedalDown = down;
+
+    if (! down)
+        for (int i = 0; i < kMaxVoices; ++i)
+            if (voiceSlots[(size_t) i].midiNote >= 0 && ! voiceSlots[(size_t) i].keyDown)
+                releaseSlot (i);
 }
 
 void HorizonPadAudioProcessor::allNotesOff (bool immediately)
 {
+    sustainPedalDown = false;
+
     for (int i = 0; i < kMaxVoices; ++i)
     {
         voiceSlots[(size_t) i].midiNote = -1;
+        voiceSlots[(size_t) i].keyDown = false;
 
         for (auto* layer : layers)
         {
@@ -626,6 +657,10 @@ void HorizonPadAudioProcessor::handleMidiMessage (const juce::MidiMessage& messa
         allNotesOff (false);
     else if (message.isAllSoundOff())
         allNotesOff (true);
+    else if (message.isSustainPedalOn())
+        setSustainPedal (true);
+    else if (message.isSustainPedalOff())
+        setSustainPedal (false);
     else if (message.isPitchWheel())
     {
         // 14-bit, centred on 8192 -> -1..+1 -> +/- the wheel's semitone range.

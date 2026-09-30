@@ -20,6 +20,22 @@ void FxChain::prepare (double sampleRate, int maximumBlockSize)
 
     dryMono.setSize (1, juce::jmax (1, maximumBlockSize), false, true, false);
     wetStereo.setSize (2, juce::jmax (1, maximumBlockSize), false, true, false);
+    lowBand.setSize (2, juce::jmax (1, maximumBlockSize), false, true, false);
+
+    for (auto& hp : sideHighpass)
+    {
+        hp.prepare ({ sampleRate, (juce::uint32) juce::jmax (1, maximumBlockSize), 1 });
+        hp.setType (juce::dsp::StateVariableTPTFilterType::highpass);
+        hp.setResonance (0.7071f);
+        hp.setCutoffFrequency (kMonoBassHz);
+    }
+
+    bassSplit.prepare (stereoSpec);
+    bassSplit.setType (juce::dsp::FirstOrderTPTFilterType::lowpass);
+    bassSplit.setCutoffFrequency (kBassDryHz);
+
+    preDelaySamples = juce::jmax (1, (int) std::round (kPreDelaySeconds * sampleRate));
+    preDelay.assign ((size_t) preDelaySamples, 0.0f);
 
     const auto ramp = 0.05; // 50 ms
     smoothedReverbSend.reset (sampleRate, ramp);
@@ -31,8 +47,14 @@ void FxChain::prepare (double sampleRate, int maximumBlockSize)
 void FxChain::reset()
 {
     reverb.reset();
+    for (auto& hp : sideHighpass)
+        hp.reset();
+    bassSplit.reset();
     dryMono.clear();
     wetStereo.clear();
+    lowBand.clear();
+    std::fill (preDelay.begin(), preDelay.end(), 0.0f);
+    preDelayWrite = 0;
 }
 
 void FxChain::setParameters (float reverbSend) noexcept
@@ -58,12 +80,40 @@ void FxChain::process (juce::AudioBuffer<float>& buffer, int numSamples)
     // room send from two already-different channels would just smear the
     // image), but the dry path below preserves left/right exactly as they
     // arrived rather than rebuilding one from the other.
-    auto* dry = dryMono.getWritePointer (0);
-    juce::FloatVectorOperations::copy (dry, left, numSamples);
-
+    // Mono bass (see kMonoBassHz): high-pass the side channel.
     if (right != left)
+    {
         for (int n = 0; n < numSamples; ++n)
-            dry[n] = 0.5f * (dry[n] + right[n]);
+        {
+            const auto mid = 0.5f * (left[n] + right[n]);
+            const auto side = sideHighpass[1].processSample (0, sideHighpass[0].processSample (0, 0.5f * (left[n] - right[n])));
+            left[n]  = mid + side;
+            right[n] = mid - side;
+        }
+    }
+
+    // Split off the bass (see the class comment): low stays dry, high is
+    // what the reverb hears and what REVERB crossfades. low + high == dry.
+    auto* lowL = lowBand.getWritePointer (0);
+    auto* lowR = lowBand.getWritePointer (1);
+
+    for (int n = 0; n < numSamples; ++n)
+    {
+        lowL[n] = bassSplit.processSample (0, left[n]);
+        lowR[n] = right != left ? bassSplit.processSample (1, right[n]) : lowL[n];
+    }
+
+    // The send is the mono sum of the high band, pre-delayed.
+    auto* dry = dryMono.getWritePointer (0);
+
+    for (int n = 0; n < numSamples; ++n)
+    {
+        const auto high = right != left ? 0.5f * ((left[n] - lowL[n]) + (right[n] - lowR[n]))
+                                        : left[n] - lowL[n];
+        dry[n] = preDelay[(size_t) preDelayWrite];
+        preDelay[(size_t) preDelayWrite] = high;
+        preDelayWrite = (preDelayWrite + 1) % preDelaySamples;
+    }
 
     // Both wet channels start from the same mono sum - the stereo image in
     // the tail comes entirely from Reverb's own internal stereo-spread comb
@@ -101,8 +151,8 @@ void FxChain::process (juce::AudioBuffer<float>& buffer, int numSamples)
         const auto dryLevel = 0.85f * std::cos (theta);
         const auto wetLevel = 0.85f * kWetCalibrationGain * std::sin (theta);
 
-        left[n]  = left[n]  * dryLevel + wetL[n] * wetLevel;
-        right[n] = right[n] * dryLevel + wetR[n] * wetLevel;
+        left[n]  = lowL[n] * 0.85f + (left[n]  - lowL[n]) * dryLevel + wetL[n] * wetLevel;
+        right[n] = lowR[n] * 0.85f + (right[n] - lowR[n]) * dryLevel + wetR[n] * wetLevel;
     }
 }
 

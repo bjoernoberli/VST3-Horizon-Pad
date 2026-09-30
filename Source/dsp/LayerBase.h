@@ -45,20 +45,15 @@ namespace horizon
                                freezeBrightnessForActiveVoices() - see its doc
                                comment for why.
 
-    Unlike those three, stereo width is set per layer, not globally - each
-    pad has its own WIDTH knob (see setWidth()). It is created with the same
-    short Haas-style delay-line split FxChain's old shared WIDTH macro used,
-    applied here (post-voice, post-tail) rather than after the four layers
-    are summed, so each pad can have its own spread instead of one shared
-    image for the whole mix.
-
-    A pure one-channel delay always localises toward the UN-delayed side (the
-    precedence effect), so which channel gets delayed matters: if every layer
-    delayed the same side, the whole mix would pull that way regardless of
-    each pad's own width setting. setWidthLeadChannel() lets the processor
-    alternate this per layer (see its call site in PluginProcessor's
-    constructor) so the four pads' pulls roughly cancel out across the mix
-    instead of stacking.
+    Stereo width is set per layer (each pad has its own WIDTH knob, see
+    setWidth()). Since sound-design v2 (2026-09-26) it is built by spreading
+    each voice's detuned oscillators across the stereo field (panGains()),
+    not by a Haas delay tap on the summed layer. Detuned oscillators are
+    decorrelated, so the spread is mono-safe by construction - no comb
+    filter, no null - and constant-power panning keeps the level flat from
+    WIDTH 0 to 1. The old Haas tap measured a comb in mono and a ~1.5 dB
+    level drop at full width (docs/dsp-review-2026-09-26.md, S-3). WIDTH 0
+    reproduces the old mono sound exactly: every pan gain is 1.
 
     Performance state (pitch bend, mod wheel) also reaches every layer
     identically, set once per block:
@@ -96,12 +91,8 @@ public:
             clearStealState (v);
         }
 
-        maxWidthSamples = juce::jmax (1.0f, (float) (kMaxWidthSeconds * newSampleRate));
-        widthDelay.setMaximumDelayInSamples ((int) std::ceil (maxWidthSamples) + 4);
-        widthDelay.prepare ({ newSampleRate, (juce::uint32) maxBlockSize, 1 });
-        widthDelay.setDelay (0.0f);
-        smoothedWidthSamples.reset (newSampleRate, 0.05);
-        smoothedWidthSamples.setCurrentAndTargetValue (0.0f);
+        smoothedWidth.reset (newSampleRate, 0.05);
+        smoothedWidth.setCurrentAndTargetValue (0.0f);
 
         // See effectiveBrightness()/render() below: FILTER's brightness
         // multiplier is ramped per sample, the same way width and (in the
@@ -126,7 +117,6 @@ public:
         }
 
         scratch.clear();
-        widthDelay.reset();
         resetLayer();
     }
 
@@ -163,21 +153,11 @@ public:
         }
     }
 
-    /** Called from the audio thread, once per block. 0 = mono, 1 = the same
-        fully-wide Haas split the old shared WIDTH macro used. */
+    /** Called from the audio thread, once per block. 0 = mono (every
+        oscillator centred), 1 = each layer's full designed spread. */
     void setWidth (float newWidth) noexcept
     {
-        smoothedWidthSamples.setTargetValue (juce::jlimit (0.0f, 1.0f, newWidth) * maxWidthSamples);
-    }
-
-    /** Not audio-thread-critical - call once, e.g. from prepareToPlay() or
-        the constructor, not per block. Chooses which channel this layer's
-        WIDTH delay is applied to: false (default) delays right, matching the
-        original behaviour; true delays left instead. See the class doc
-        comment above for why the processor alternates this per layer. */
-    void setWidthLeadChannel (bool newDelayLeftInstead) noexcept
-    {
-        delayLeftChannel = newDelayLeftInstead;
+        smoothedWidth.setTargetValue (juce::jlimit (0.0f, 1.0f, newWidth));
     }
 
     /** Called from the audio thread, once per block. */
@@ -251,7 +231,6 @@ public:
         voices[(size_t) voiceIndex].env.noteOff();
     }
 
-    /** Immediately silences a voice (used on allNotesOff / reset). */
     /** Hard stop, no declick ramp - for panic / allNotesOff(immediately),
         where the host wants silence now. Ordinary note starts go through
         startNote(), which ramps. */
@@ -273,6 +252,15 @@ public:
         numSamples = juce::jmin (numSamples, scratch.getNumSamples());
 
         scratch.clear (0, numSamples);
+
+        // WIDTH for this block: pan gains are interpolated linearly from the
+        // block's start width to its end width (rule 18 - a control signal
+        // driving a gain is interpolated to sample rate, not stepped).
+        blockWidthStart = smoothedWidth.getCurrentValue();
+        smoothedWidth.skip (numSamples);
+        blockWidthEnd = smoothedWidth.getCurrentValue();
+        blockLength = numSamples;
+
         beginBlock (numSamples);
 
         // Precompute this block's brightness ramp once (not once per voice):
@@ -311,51 +299,6 @@ public:
 
         renderLayerTail (scratch, numSamples);
 
-        // --- Per-layer stereo width: covers voices and any tail effect (e.g.
-        // Airy Choir's shimmer bus) uniformly, since it runs after both.
-        // Which channel is the delayed one depends on delayLeftChannel (see
-        // setWidthLeadChannel()) - left and right are bit-identical at this
-        // point in every layer, so it doesn't matter which one is read as
-        // the delay line's source.
-        //
-        // Mono-safety: a pure equal-gain delay tap (source on one channel,
-        // delay(source) on the other) is a textbook comb filter with TRUE
-        // zeros at f = (2k+1)/(2*delaySeconds) once L+R are summed to mono -
-        // not just attenuation, complete cancellation, because both channels
-        // carry the exact same signal. Measured with HorizonPadSoundTool +
-        // an offline mono-downmix check: at full WIDTH the fundamental of a
-        // middle-register note landed almost exactly on that first null,
-        // producing a ~36 dB notch and pulling total mono-summed RMS down to
-        // ~24% of a single channel's - i.e. the pad nearly disappears on any
-        // mono playback path (phone/Bluetooth speaker, club mono zone,
-        // broadcast mono check). blendBack mixes a small, width-proportional
-        // fraction of the dry (undelayed) source back into the delayed
-        // channel so that null becomes a bounded, shallow dip instead of a
-        // true zero: at the null frequency the mono sum becomes
-        // 2*blendBack*|source| rather than 0. kMonoSafetyBlend=0.15 bounds
-        // the worst-case notch to about -16 dB (still a legible width cue in
-        // stereo) while width=0 stays byte-identical to before (blendBack=0).
-        {
-            auto* left = scratch.getWritePointer (0);
-            auto* right = scratch.getWritePointer (1);
-            auto* source = delayLeftChannel ? right : left;
-            auto* delayed = delayLeftChannel ? left : right;
-
-            constexpr float kMonoSafetyBlend = 0.30f;
-
-            for (int n = 0; n < numSamples; ++n)
-            {
-                const auto widthSamples = smoothedWidthSamples.getNextValue();
-                widthDelay.pushSample (0, source[n]);
-                widthDelay.setDelay (widthSamples);
-                const auto delayedSample = widthDelay.popSample (0);
-
-                const auto widthFraction = widthSamples / maxWidthSamples;
-                const auto blendBack = kMonoSafetyBlend * widthFraction;
-                delayed[n] = delayedSample * (1.0f - blendBack) + source[n] * blendBack;
-            }
-        }
-
         for (int ch = 0; ch < juce::jmin (2, target.getNumChannels()); ++ch)
             target.addFrom (ch, 0, scratch, ch, 0, numSamples);
     }
@@ -363,14 +306,20 @@ public:
     bool isVoiceActive (int voiceIndex) const noexcept { return voices[(size_t) voiceIndex].active; }
 
     /**
-        Pins this layer's start-phase RNG so a render is reproducible.
+        Pins this layer's RNG so a render is reproducible.
 
-        The plugin never calls this: per-voice random start phases are
-        deliberate (see the rng member). The offline harness does, because
-        "two runs from reset are bit-identical" is how a null test and a
-        regression baseline are possible at all.
+        The plugin never calls this: per-voice random start phases and drift
+        are deliberate (see the rng member). The offline harness does, because
+        "two seeded runs from reset are bit-identical" is how a null test and a
+        regression baseline are possible at all. Layer-wide random state (a
+        shared LFO phase, say) was drawn in prepare(), before the seed arrived,
+        so it is re-drawn here.
     */
-    void setRandomSeed (juce::int64 seed) noexcept { rng.setSeed (seed); }
+    void setRandomSeed (juce::int64 seed) noexcept
+    {
+        rng.setSeed (seed);
+        reseedLayerState();
+    }
 
 protected:
     struct Voice
@@ -392,6 +341,170 @@ protected:
         int pendingNote = -1;
         float pendingVelocity = 0.0f;
     };
+
+    /**
+        Irregular, slow pitch drift for one oscillator: smoothed random
+        segments, not a sine.
+
+        The prototype used a sine LFO because Faust's `no.lfnoise` (a
+        Butterworth smoother at a sub-Hz cutoff) is unstable in single
+        precision - a constraint of the prototyping tool, not a sound-design
+        decision, and one C++ does not share. A sine drift is periodic, and
+        periodic movement is one of the cues that reads as synthetic; the
+        playbook's guidance for movement is "small, slow, irregular".
+
+        Each segment runs from one uniform random target in [-1, 1] to the
+        next along a smoothstep (continuous in value and slope, so no pitch
+        corner), and each segment's length is jittered +/-30% around half the
+        period of the old sine, so the timescale is the one the sound design
+        was voiced with. kRmsMatch scales the result to the old sine's RMS
+        (0.707): E[v^2] of this construction is 0.2476, RMS 0.4976. State is
+        double precision (numerics, playbook 3.3).
+    */
+    struct Drift
+    {
+        static constexpr double kRmsMatch = 0.70711 / 0.49760;
+
+        double from = 0.0, to = 0.0, position = 0.0, step = 0.0;
+
+        void start (juce::Random& random, float rateHz, double sr) noexcept
+        {
+            from = random.nextDouble() * 2.0 - 1.0;
+            to = random.nextDouble() * 2.0 - 1.0;
+            position = random.nextDouble();
+            step = segmentStep (random, rateHz, sr);
+        }
+
+        /** One sample of drift, scaled to the old sine's RMS (so +/-1 nominal). */
+        float next (juce::Random& random, float rateHz, double sr) noexcept
+        {
+            position += step;
+
+            if (position >= 1.0)
+            {
+                position -= 1.0;
+                from = to;
+                to = random.nextDouble() * 2.0 - 1.0;
+                step = segmentStep (random, rateHz, sr);
+            }
+
+            const auto s = position * position * (3.0 - 2.0 * position);
+            return (float) ((from + (to - from) * s) * kRmsMatch);
+        }
+
+        static double segmentStep (juce::Random& random, float rateHz, double sr) noexcept
+        {
+            // A sine at rateHz goes extreme-to-extreme twice per period.
+            const auto jitter = 0.7 + 0.6 * random.nextDouble();
+            return 2.0 * (double) rateHz * jitter / sr;
+        }
+    };
+
+    /**
+        Key tracking for a filter cutoff: (f / C4)^amount.
+
+        Every filter in the Faust design is fixed in Hz and was voiced around
+        C4, so the layers' level and brightness changed by up to 27 dB across
+        the keyboard (docs/dsp-review-2026-09-26.md, S-2). Anchoring the
+        tracking at C4 leaves the voiced sound at C4 exactly as designed -
+        the same convention as the macros' "0.5 = the validated sound" - and
+        makes the rest of the keyboard follow it. amount 0 = no tracking,
+        1 = the cutoff moves with the note (constant timbre).
+    */
+    static float keyTrack (float frequencyHz, float amount) noexcept
+    {
+        return std::pow (frequencyHz / kKeyTrackAnchorHz, amount);
+    }
+
+    /** Key tracking with a different amount below and above C4. Below C4 the
+        layers track fully (amount 1): the note keeps the harmonic count it
+        was voiced with at C4 instead of gaining harmonics as it falls. A
+        fixed-Hz filter at C2 lets through twice the harmonics it does at C4,
+        and below ~C3 those harmonics sit closer together than a critical
+        band, which is roughness - measured 6-40x the C4 figure on single
+        notes (tools/measure/register.py, review of 2026-09-26). */
+    static float keyTrack (float frequencyHz, float amountBelow, float amountAbove) noexcept
+    {
+        return keyTrack (frequencyHz, frequencyHz < kKeyTrackAnchorHz ? amountBelow : amountAbove);
+    }
+
+    static constexpr float kKeyTrackAnchorHz = 261.6256f; // C4, MIDI 60
+
+    /** Smoothstep from 0 at loHz to 1 at hiHz: the register helpers below
+        change nothing above hiHz, so the sound design above C3 is untouched. */
+    static float registerBlend (float frequencyHz, float loHz, float hiHz) noexcept
+    {
+        const auto t = juce::jlimit (0.0f, 1.0f, (frequencyHz - loHz) / (hiHz - loHz));
+        return t * t * (3.0f - 2.0f * t);
+    }
+
+    /**
+        Unison in the bass. Detuned partners beat at a rate proportional to
+        frequency: a shimmer of 1-4 Hz in the middle register, a slow, deep
+        phasing swell at C1-C2, where it reads as the note going out of tune
+        rather than as life. Below C3 the partner oscillators fade towards
+        kBassPartnerFloor of their level and the drift depth halves, so the
+        bass tightens into a stable note - the way a string section's low
+        players are fewer and a synth programmer tightens detune for bass.
+        Unchanged at and above C3 (130.8 Hz).
+    */
+    struct Unison
+    {
+        float partnerGain = 1.0f;   ///< gain for every oscillator except the centre one
+        float normalise = 1.0f;     ///< keeps the stack's power where it was with full partners
+        float driftScale = 1.0f;
+    };
+
+    static Unison unisonFor (float frequencyHz, int numOscs) noexcept
+    {
+        const auto blend = registerBlend (frequencyHz, kBassRegisterLowHz, kBassRegisterHighHz);
+        Unison u;
+        u.partnerGain = kBassPartnerFloor + (1.0f - kBassPartnerFloor) * blend;
+        const auto partners = (float) (numOscs - 1);
+        u.normalise = std::sqrt ((1.0f + partners) / (1.0f + partners * u.partnerGain * u.partnerGain));
+        u.driftScale = 0.5f + 0.5f * blend;
+        return u;
+    }
+
+    static constexpr float kBassRegisterLowHz = 55.0f;    // A1: fully "bass"
+    static constexpr float kBassRegisterHighHz = 130.81f; // C3: fully the voiced sound
+    static constexpr float kBassPartnerFloor = 0.35f;
+
+    /** Constant-power pan gains for a position in [-1, 1], normalised so the
+        centre is (1, 1): WIDTH 0 leaves every oscillator exactly as loud in
+        each channel as it was before stereo spread existed. */
+    static void panGains (float position, float& left, float& right) noexcept
+    {
+        const auto angle = (juce::jlimit (-1.0f, 1.0f, position) + 1.0f) * juce::MathConstants<float>::pi * 0.25f;
+        left  = std::cos (angle) * juce::MathConstants<float>::sqrt2;
+        right = std::sin (angle) * juce::MathConstants<float>::sqrt2;
+    }
+
+    /**
+        Per-block pan ramp for one oscillator of one voice. `spread` is the
+        oscillator's designed position at WIDTH 1; odd voice slots mirror it,
+        so the oscillators of a chord interleave across the field instead of
+        every note stacking its sharp oscillator on the same side.
+    */
+    struct PanRamp
+    {
+        float left = 1.0f, right = 1.0f, leftStep = 0.0f, rightStep = 0.0f;
+
+        void advance() noexcept { left += leftStep; right += rightStep; }
+    };
+
+    PanRamp makePanRamp (float spread, int voiceIndex) const noexcept
+    {
+        const auto mirrored = (voiceIndex % 2 == 1) ? -spread : spread;
+        float l0, r0, l1, r1;
+        panGains (mirrored * blockWidthStart, l0, r0);
+        panGains (mirrored * blockWidthEnd, l1, r1);
+        const auto inv = 1.0f / (float) juce::jmax (1, blockLength);
+        return { l0, r0, (l1 - l0) * inv, (r1 - r0) * inv };
+    }
+
+    /** This block's WIDTH at its end - for layer-wide stereo such as a bus reverb's width. */
+    float currentWidth() const noexcept { return blockWidthEnd; }
 
     /** The FILTER macro value a voice should render with at this sample: its
         own frozen snapshot if freezeBrightnessForActiveVoices() caught it
@@ -436,6 +549,10 @@ protected:
     virtual void resetLayer() {}
     virtual void startVoice (int /*voiceIndex*/, float /*frequency*/, float /*velocity*/) {}
 
+    /** Re-draw any layer-wide random state (not per-voice state, which is
+        drawn at each note-on) after the RNG has been re-seeded. */
+    virtual void reseedLayerState() {}
+
     /** Called once per block before any voice is rendered. */
     virtual void beginBlock (int /*numSamples*/) {}
 
@@ -469,19 +586,70 @@ protected:
         return value;
     }
 
-    /** Naive triangle from a 0..1 phase - triangle's weak high-frequency content
-        makes it low-alias-risk enough to skip polyBLEP correction (same call
-        made elsewhere in this codebase). */
-    static float triangleWave (float phase) noexcept
+    /**
+        Triangle from a 0..1 phase, with polyBLAMP correction at both corners.
+
+        The naive triangle's corners are slope discontinuities; their
+        harmonics fall at 12 dB/octave, which is gentle enough at the played
+        pitch but not an octave up at the top of the keyboard: Expanse's
+        stack runs at 2 x f0 and measured aliases 21 dB below the layer's
+        peak at MIDI 108 (EX-003). polyBLAMP - the integrated counterpart of
+        polyBLEP - rounds each corner over the two samples around it and
+        leaves the waveform untouched everywhere else.
+
+        Corners: phase 0 is the peak (slope changes by -8 per unit phase),
+        phase 0.5 the trough (+8). The residual is scaled by the slope change
+        per sample, 8 * phaseIncrement.
+    */
+    static float polyBlampTriangle (float phase, float phaseIncrement) noexcept
     {
-        return 4.0f * std::abs (phase - 0.5f) - 1.0f;
+        auto value = 4.0f * std::abs (phase - 0.5f) - 1.0f;
+        const auto slopeChange = 8.0f * phaseIncrement;
+
+        value -= slopeChange * blampResidual (phase, phaseIncrement);
+
+        auto shifted = phase + 0.5f;
+        if (shifted >= 1.0f)
+            shifted -= 1.0f;
+
+        value += slopeChange * blampResidual (shifted, phaseIncrement);
+        return value;
+    }
+
+    /** Two-point polyBLAMP residual for a unit slope change at phase 0 (per
+        sample), evaluated at `phase` with `increment` = phase advance per sample. */
+    static float blampResidual (float phase, float increment) noexcept
+    {
+        if (phase < increment)
+        {
+            const auto t = phase / increment - 1.0f;   // -1..0 after the corner
+            return -t * t * t / 6.0f;
+        }
+
+        if (phase > 1.0f - increment)
+        {
+            const auto t = (phase - 1.0f) / increment + 1.0f; // 0..1 before the corner
+            return t * t * t / 6.0f;
+        }
+
+        return 0.0f;
+    }
+
+    /** 4-point, 3rd-order Hermite interpolation (rule 10: modulated delays are
+        not read with linear interpolation). x is the fractional position
+        between y0 and y1; ym1 and y2 are the neighbours either side. */
+    static float hermite (float ym1, float y0, float y1, float y2, float x) noexcept
+    {
+        const auto c0 = y0;
+        const auto c1 = 0.5f * (y1 - ym1);
+        const auto c2 = ym1 - 2.5f * y0 + 2.0f * y1 - 0.5f * y2;
+        const auto c3 = 0.5f * (y2 - ym1) + 1.5f * (y0 - y1);
+        return ((c3 * x + c2) * x + c1) * x + c0;
     }
 
     static float wrapPhase (float phase) noexcept
     {
-        while (phase >= 1.0f) phase -= 1.0f;
-        while (phase < 0.0f)  phase += 1.0f;
-        return phase;
+        return phase - std::floor (phase);
     }
 
     /** Applies pitchBendSemitones to a base frequency. Call from renderVoice. */
@@ -505,7 +673,6 @@ protected:
     juce::SmoothedValue<float> smoothedBrightness;
     juce::AudioBuffer<float> brightnessBlock;
 
-    /** This layer's own WIDTH knob - see setWidth() and render(). */
     /** Voice-steal declick ramp length. 5 ms is long enough to remove the
         step (a 5 ms raised ramp has no energy above roughly 200 Hz worth
         speaking of) and short enough to be well inside the ~2 ms onset JND's
@@ -513,38 +680,21 @@ protected:
     static constexpr float kStealFadeSeconds = 0.005f;
     int stealFadeSamples = 1;
 
-    /**
-        Maximum WIDTH delay, as a TIME.
-
-        This used to be a flat 90 samples, which made the Haas time a function
-        of the sample rate: 2.04 ms at 44.1 kHz but 0.47 ms at 192 kHz, a
-        factor of 4.3. The precedence effect that WIDTH trades on is a
-        time-domain phenomenon (and the inter-channel time JND is ~10-20 us),
-        so the same knob produced a different stereo image per rate, and the
-        mono comb notch it has to stay clear of moved with it.
-
-        Anchored at 90 samples / 48 kHz so behaviour at 48 kHz is unchanged,
-        and 44.1 / 88.2 / 96 / 176.4 / 192 kHz now match it in time instead of
-        in samples.
-    */
-    static constexpr float kMaxWidthSeconds = 90.0f / 48000.0f;
-
-    /** kMaxWidthSeconds in samples at the current rate; set in prepare(). */
-    float maxWidthSamples = 90.0f;
-
-    juce::dsp::DelayLine<float, juce::dsp::DelayLineInterpolationTypes::Linear> widthDelay { 512 };
-    juce::SmoothedValue<float> smoothedWidthSamples;
-    bool delayLeftChannel = false;
+    /** This layer's own WIDTH knob - see setWidth() and makePanRamp(). */
+    juce::SmoothedValue<float> smoothedWidth;
+    float blockWidthStart = 0.0f;
+    float blockWidthEnd = 0.0f;
+    int blockLength = 1;
 
     /** Set once per block by the processor from MIDI/UI performance state. */
     float pitchBendSemitones = 0.0f;
     float modAmount = 0.0f;
 
-    /** Cheap noise source, kept for any layer that still wants a bit of texture. */
-    /** Oscillator/LFO start phases are randomised per voice so that two
-        instances in the same project do not start phase-locked and sum
-        coherently - deliberate, and the reason two renders of the same build
-        are not bit-identical. setRandomSeed() pins it for measurement. */
+    /** Oscillator/LFO start phases and drift are randomised per voice so that
+        two instances in the same project do not start phase-locked and sum
+        coherently - deliberate, and the reason two unseeded renders of the
+        same build are not bit-identical. setRandomSeed() pins it for
+        measurement. */
     juce::Random rng { juce::Random::getSystemRandom().nextInt64() };
 };
 

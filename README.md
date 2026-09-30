@@ -23,20 +23,23 @@ generated in code.
 | 3 | **Expanse** | `AiryChoirLayer` | A detuned oscillator stack through a swept bandpass, with a parallel shimmer send: highpass → a two-grain +1-octave pitch shifter (`OctaveShimmer`, the C++ equivalent of a granular `transpose`) → its own small reverb, blended back in |
 | 4 | **Bloom** | `MotionPadLayer` | A detuned oscillator stack through a lowpass with an LFO-modulated cutoff and a tremolo, for a pad that visibly "breathes"/moves over time |
 
-All four layers respond to MIDI note on/off with shared voice allocation (up
-to 8 voices, three-tier stealing: free slot → oldest released-but-ringing
-slot → oldest held note), so a chord sounds coherent across every layer.
+All four layers respond to MIDI note on/off and the sustain pedal (CC64) with
+shared voice allocation (up to 8 voices, four-tier stealing: free slot →
+oldest released-but-ringing slot → oldest pedalled note → oldest held key), so
+a chord sounds coherent across every layer.
 Attack/release are long by design — this is an ambient pad, not a lead — but
 the ATTACK/RELEASE macros can pull them down into a fast, click-free,
 percussive-pad range too (see below).
 
-Each layer also has its own **stereo width**: a short (≤90-sample)
-Haas-style delay tap on one channel, alternated left/right per layer so the
-four layers' precedence-effect pulls roughly cancel across the mix. A
-width-proportional dry-signal blend is mixed back into the delayed channel
-so a full-width setting never produces a true null when the mix is summed to
-mono (a real hazard with an unmitigated equal-gain delay tap) — see the
-comment above the width block in `Source/dsp/LayerBase.h` for the numbers.
+Each layer also has its own **stereo width**: it spreads that layer's detuned
+oscillators across the stereo field with constant-power panning, mirrored on
+alternate voices so a chord's oscillators interleave. Detuned oscillators are
+decorrelated, so the spread is mono-safe by construction and does not change
+the level. The bass stays mono regardless: the side channel is high-passed at
+140 Hz before the reverb, and the reverb itself only receives the band above
+160 Hz. Every layer is also key-tracked and register-aware (see
+`Source/dsp/LayerBase.h`), so it holds its character from the bass to the top
+of the keyboard.
 
 ## Global FX chain
 
@@ -232,18 +235,28 @@ cmake --build build-release --target HorizonPadSoundTool -j 8
 ctest --test-dir build-release --output-on-failure
 ```
 
-Eight tests, about 30 seconds, driving the real plugin DSP through
+Seventeen tests, under 40 seconds, driving the real plugin DSP through
 `HorizonPadSoundTool` ([`tools/tests/dsp_tests.py`](tools/tests/dsp_tests.py)).
 Five assert end-to-end properties — zero reported latency, bit-identical
 renders from a seeded reset, all 36 sample-rate × block-size combinations
 clean, no NaN or denormal storm after 60 s of silence, all 18 factory presets
-safe. Three are regression guards, one per bug that measurement caught:
+safe. The rest guard a bug that measurement caught, a layer's defining
+feature, or an instrument-level contract:
 
 | Test | Guards against |
 |---|---|
 | `shimmer_octave_present` | Expanse's +1 octave shimmer silently not transposing |
-| `width_is_rate_invariant` | WIDTH's Haas delay drifting back to a sample count |
+| `width_is_rate_invariant` | WIDTH's stereo image changing with the sample rate |
 | `voice_steal_declick` | Voice stealing cutting a sounding voice mid-cycle |
+| `reverb_level_flat` | REVERB changing the loudness (a non-power-complementary bass split did) |
+| `root_sub_present` | Root's sub-octave missing |
+| `clearing_ensemble_present` | Clearing's ensemble missing or mono |
+| `bloom_tremolo_survives_chords` | Bloom's tremolo averaging away in chords |
+| `keyboard_level_span` | A layer vanishing away from C4 |
+| `width_mono_safe_and_level_flat` | WIDTH collapsing in mono or changing the level |
+| `sustain_pedal_holds` | The sustain pedal being ignored |
+| `low_register_stays_musical` | Roughness in the bass register; Expanse leaving its register |
+| `bass_is_mono` | Stereo content below ~100 Hz |
 
 The suite needs `python3` with `numpy` and `scipy`. Without them CMake skips
 test registration, so a plain plugin build never fails for want of them.
@@ -253,7 +266,12 @@ test registration, so a plain plugin build never fails for want of them.
 [`tools/measure/`](tools/measure/) holds the G3/G5 measurement scripts — alias
 floor by sample-rate comparison, the metric battery, reverb decay per octave
 band, and the port-vs-prototype null test. Each prints a markdown table and is
-runnable on its own.
+runnable on its own. `descriptors.py` measures whether it is the sound that was
+designed (layer contrast, keyboard range, mix pocket, stereo, movement, preset
+bank) against the baselines in [`docs/baselines/`](docs/baselines/), and
+`register.py` measures how musical each layer stays from C1 to C5.
+[`tools/listening/make_session.py`](tools/listening/make_session.py) builds a
+blind, loudness-matched A/B/X listening page comparing two builds.
 
 ### Plugin-format validators
 

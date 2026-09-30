@@ -182,12 +182,20 @@ private:
 
     struct VoiceSlot
     {
-        int midiNote = -1;          ///< -1 when not held
+        int midiNote = -1;          ///< -1 when neither held nor sustained
+        bool keyDown = false;       ///< the key itself is held
         juce::uint32 order = 0;     ///< monotonic allocation counter, for voice stealing
     };
 
     std::array<VoiceSlot, (size_t) horizon::kMaxVoices> voiceSlots;
     juce::uint32 voiceOrderCounter = 0;
+
+    /** Sustain pedal (CC64 >= 64). While it is down, a key release does not
+        release the voice: the slot keeps its note, with keyDown false, until
+        the pedal comes up. Audio thread only. */
+    bool sustainPedalDown = false;
+    void setSustainPedal (bool down);
+    void releaseSlot (int slot);
 
     std::atomic<int> currentProgram { 0 };
     std::atomic<float> outputLevel { 0.0f };

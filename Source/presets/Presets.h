@@ -17,7 +17,7 @@ namespace ParamID
     static constexpr const char* bloomVolume    = "bloomVolume";
 
     // Per-layer stereo width, LayerIndex order - each pad's own WIDTH knob
-    // (a per-layer Haas-delay spread; see LayerBase), replacing what used to
+    // (spreads that pad's oscillators; see LayerBase), replacing what used to
     // be one shared WIDTH macro across the whole mix.
     static constexpr const char* rootWidth     = "rootWidth";
     static constexpr const char* clearingWidth = "clearingWidth";

@@ -65,11 +65,24 @@ public:
             // -10 dB). See docs/g5-null-test.md.
             const auto readPosF = (float) writePos
                                 - ((float) grainLength - (float) age * (ratio - 1.0f));
-            auto i0 = (int) std::floor (readPosF);
-            const auto frac = readPosF - (float) i0;
-            i0 = ((i0 % bufferSize) + bufferSize) % bufferSize;
-            const auto i1 = (i0 + 1) % bufferSize;
-            return buffer[(size_t) i0] * (1.0f - frac) + buffer[(size_t) i1] * frac;
+            const auto base = (int) std::floor (readPosF);
+            const auto x = readPosF - (float) base;
+
+            // 4-point Hermite, so the read is correct for any ratio (rule 10).
+            // At the fixed ratio 2 the read position is always a whole
+            // sample - x is 0 and this returns y0 exactly - so what matters
+            // at ratio 2 is not interpolation but decimation: reading every
+            // second sample folds anything above fs/4 back down. The caller
+            // band-limits the input below fs/4 for that reason (see
+            // AiryChoirLayer's shimmerAntiAlias). The newest sample a read
+            // can reach is writePos - 1; base + 2 can then touch the oldest
+            // history, where the grain window is already at zero.
+            auto at = [this] (int i) noexcept { return buffer[(size_t) (((i % bufferSize) + bufferSize) % bufferSize)]; };
+            const auto ym1 = at (base - 1), y0 = at (base), y1 = at (base + 1), y2 = at (base + 2);
+            const auto c1 = 0.5f * (y1 - ym1);
+            const auto c2 = ym1 - 2.5f * y0 + 2.0f * y1 - 0.5f * y2;
+            const auto c3 = 0.5f * (y2 - ym1) + 1.5f * (y0 - y1);
+            return ((c3 * x + c2) * x + c1) * x + y0;
         };
 
         auto windowOf = [this] (int age) noexcept

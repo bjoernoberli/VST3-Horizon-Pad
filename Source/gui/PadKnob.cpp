@@ -34,7 +34,7 @@ PadKnob::PadKnob (HorizonPadAudioProcessor& processorToUse, int layerIndex,
     volumeSlider.onValueChange = [this] { repaint(); };
 
     setUpRingKnob (widthSlider, Palette::widthAccent);
-    widthSlider.setTooltip (caption + " stereo width - 0% is mono, 100% is a wide Haas-delayed spread.");
+    widthSlider.setTooltip (caption + " stereo width - 0% is mono, 100% spreads its detuned oscillators across the field (mono-safe).");
     addAndMakeVisible (widthSlider);
     widthAttachment = std::make_unique<juce::AudioProcessorValueTreeState::SliderAttachment> (
         processorToUse.getAPVTS(), widthParamId, widthSlider);

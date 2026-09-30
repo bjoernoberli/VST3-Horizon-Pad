@@ -31,6 +31,17 @@ namespace horizon
     tail just adding on top of a still-full-level dry signal - see the
     comment in process() and kWetCalibrationGain below for why a plain
     linear crossfade isn't enough on its own.
+
+    Sound-design v2 (2026-09-26): the bass stays dry. A complementary split
+    at kBassDryHz takes the low end out of both the reverb send and the
+    crossfade - `low = LP(dry)`, `high = dry - low`, so low + high is the dry
+    signal exactly - and only `high` is sent to the room and crossfaded
+    against it. Before, the full-band sum went into the reverb, sub-octave
+    included, and REVERB 100% removed the dry bass altogether; for an
+    instrument whose brief is to sit under acoustic guitar and piano, a
+    reverberant 30-150 Hz is mud (review S-4). The send also has kPreDelay
+    of pre-delay, so the room starts after the pad rather than on top of it.
+    At REVERB 0 the output is still exactly `dry * 0.85`.
 */
 class FxChain
 {
@@ -70,6 +81,35 @@ private:
     // this constant as miscalibrated during that audit.
     static constexpr float kWetCalibrationGain = 0.48f;
 
+    /** Mono bass: the side signal (L-R)/2 is high-passed here before
+        anything else, so everything below ~kMonoBassHz is mono whatever the
+        layers' WIDTH does above it. WIDTH spreads whole oscillators, which
+        put a C2 note's 65 Hz fundamental into the side channel (6-10 dB more
+        low side than v1, tools/measure/register.py); a PA sums the low end
+        to mono, and a stereo sub reads as phasey and loses weight when it
+        does. The standard mastering move ("elliptic EQ"), done at the source. */
+    static constexpr float kMonoBassHz = 140.0f;
+    std::array<juce::dsp::StateVariableTPTFilter<float>, 2> sideHighpass; // cascaded: 24 dB/oct
+    // (a single 12 dB/oct stage at 120 Hz measured the side below 100 Hz only
+    // 12 dB under the mid on a full-width C2 chord - G2 at 98 Hz sits in the
+    // slope)
+
+    static constexpr float kBassDryHz = 160.0f;
+    static constexpr float kPreDelaySeconds = 0.020f;
+
+    /** Stereo one-pole lowpass; the high band is dry - low. First order on
+        purpose: a one-pole lowpass and its complement are in quadrature, so
+        they sum to the dry signal exactly AND their powers sum to the dry
+        power exactly. That second property is what keeps REVERB level-flat
+        once the high band is swapped for an uncorrelated reverb tail. The
+        two-pole split tried first is not power-complementary (|low|^2 +
+        |high|^2 = 1.5 at the split) and made bass-heavy material 2.5 dB
+        louder at REVERB 100%, measured. */
+    juce::dsp::FirstOrderTPTFilter<float> bassSplit;
+    std::vector<float> preDelay;
+    int preDelayWrite = 0;
+    int preDelaySamples = 0;
+
     double currentSampleRate = 44100.0;
 
     juce::dsp::Reverb reverb;
@@ -85,6 +125,7 @@ private:
     // both output channels by hand below, which is what made the old tail
     // sound flat/mono instead of spacious.
     juce::AudioBuffer<float> wetStereo;
+    juce::AudioBuffer<float> lowBand;
 
     juce::SmoothedValue<float> smoothedReverbSend;
 
