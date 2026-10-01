@@ -130,3 +130,34 @@ each changes the sound, so each needs ears:
 above has already brightened Expanse substantially. Stacking four brightening
 changes without a listening pass is how a pad ends up harsh. They belong in one
 sound-design pass, A/B'd against `sound design/reference-renders/`.
+
+## Correction, 2026-09-26: the port side was not rendered with the stated patch
+
+`HorizonPadSoundTool` kept only the **last** `--param` flag when several were
+given (fixed 2026-09-26, `parseArgs` now accumulates them). `null_test.py`
+passes nine, so the port side above was rendered with only `bloom-width=0`
+applied: **reverb on at the default 28%**, the macros not at 0.5, and three of
+the four widths not at zero. The prototype side was dry. The table above
+therefore compares a dry prototype against a reverberant port.
+
+Re-run on the same DSP with the parameters applied:
+
+| Layer | 20-80 | 80-160 | 160-320 | 320-640 | 640-1280 | 1280-2560 | 2560-5120 | 5120-10240 |
+|---|---|---|---|---|---|---|---|---|
+| Warm Foundation | . | -2.9 | +1.2 | -3.9 | -4.3 | -4.7 | . | . |
+| Analog Ensemble | . | . | +2.1 | -2.7 | -0.8 | -1.2 | -1.6 | . |
+| Airy Choir | . | . | . | +0.3 | -15.3 | -1.7 | -4.8 | **-17.3** |
+| Motion Pad | . | . | +0.6 | -1.2 | -3.0 | -4.5 | -4.2 | . |
+
+What changes: "the port is darker than the prototype, everywhere" was mostly
+the reverb. Root, Clearing and Bloom agree within about 5 dB in every
+significant band, which is what the Q difference alone predicts. What stands:
+Expanse's two-pole safety lowpass (-17.3 dB at 5-10 kHz) and its shimmer
+octave level (-15.3 dB at 640-1280 Hz) are the real divergences. The gate's
+"characterised" status is unchanged; the characterisation of Root, Clearing
+and Bloom is superseded by this table.
+
+Not visible to this method at all: Root's oscillator detune is +7/-6 cents in
+C++ and +1.2/-1.0 cents in the prototype (`four_pads.dsp`: `det * 0.01` with
+det = 0.07). Steady-state band energy cannot see a detune; see
+`docs/dsp-review-2026-09-26.md` G-6.

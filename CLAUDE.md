@@ -84,17 +84,34 @@ cmake --build build-release --target HorizonPadSoundTool -j 8
 ctest --test-dir build-release --output-on-failure
 ```
 
-Eight tests (~30 s), `tools/tests/dsp_tests.py`, registered by CMake. They
+Seventeen tests (~37 s), `tools/tests/dsp_tests.py`, registered by CMake. They
 drive the real DSP through `HorizonPadSoundTool` rather than unit-testing
 classes: latency, seeded-reset determinism, the 36 sample-rate x block-size
-combinations, 60 s of silence, all 18 presets — plus three regression guards
-(`shimmer_octave_present`, `width_is_rate_invariant`, `voice_steal_declick`),
-one per bug measurement has caught. **Add a regression test whenever a DSP
-defect is fixed.** Needs python3 + numpy + scipy; CMake skips registration if
-they are missing, so a plain plugin build never fails without them.
+combinations, 60 s of silence, all 18 presets; regression guards, one per bug
+measurement has caught (`shimmer_octave_present`, `width_is_rate_invariant`,
+`voice_steal_declick`, `reverb_level_flat`); a presence test per defining
+feature (`root_sub_present`, `clearing_ensemble_present`,
+`bloom_tremolo_survives_chords`); and instrument-level contracts
+(`keyboard_level_span`, `width_mono_safe_and_level_flat`, `sustain_pedal_holds`,
+`low_register_stays_musical`, `bass_is_mono`). **Add a regression test whenever a
+DSP defect is fixed, and show it failing on the build that has the defect**
+(a `git worktree` of the previous commit). Needs python3 + numpy + scipy; CMake
+skips registration if they are missing, so a plain plugin build never fails
+without them.
 
-`tools/measure/` holds the G3/G5 measurement scripts (alias floor, metric
-battery, reverb decay, port-vs-prototype null test).
+`tools/measure/` holds the measurement scripts: G3/G5 (alias floor, metric
+battery, reverb decay, port-vs-prototype null test), `descriptors.py` (is it the
+sound we designed: layer grid, keyboard, mix pocket, stereo, movement, presets -
+four seeds per figure, `--save`/`--compare` against `docs/baselines/`) and
+`register.py` (roughness, pitch salience, harmonic content and low side energy
+per note, C1-C5 and low voicings). `tools/listening/make_session.py` renders a
+blind, loudness-matched A/B/X page (baseline build vs candidate) for the
+listening passes the measurements cannot settle.
+
+The tool's `--param` flag is repeatable (it silently kept only the last one
+before 2026-09-26 - G5 was re-run, see `docs/g5-null-test.md`); the applied
+state is echoed under `activeParams`, and scripts should assert on it.
+`--pedal=down,up` sends the sustain pedal.
 
 ### CI
 
@@ -120,8 +137,8 @@ soft-clip safety net.
 | GUI name | Class | `LayerIndex` | Character |
 |---|---|---|---|
 | Root | `WarmFoundationLayer` | `warmFoundation` | Detuned triangle stack + polyBLEP saw edge + sub-osc (−1 oct), lowpass with "breathing" cutoff |
-| Clearing | `AnalogEnsembleLayer` | `analogEnsemble` | Unison stack + LFO-swept delay line (2–11ms, 0.11Hz) chorus/flanger, into a lowpass |
-| Expanse | `AiryChoirLayer` | `airyChoir` | Detuned stack through swept bandpass + parallel shimmer send (highpass → `OctaveShimmer` 2-grain +1-octave pitch shift → its own small reverb) |
+| Clearing | `AnalogEnsembleLayer` | `analogEnsemble` | Unison saw stack into a lowpass, then a wet-only stereo 3-tap ensemble on the layer bus (0.6 + 5.5 Hz, bass below 200 Hz bypasses it) |
+| Expanse | `AiryChoirLayer` | `airyChoir` | Detuned triangle stack through swept bandpass + parallel shimmer send (highpass → `OctaveShimmer` 2-grain +1-octave pitch shift → its own stereo reverb); below C4 pinned near C5 (register pinning) |
 | Bloom | `MotionPadLayer` | `motionPad` | Detuned stack through lowpass with LFO-modulated cutoff + tremolo — deliberately never static |
 
 Each layer's class doc comment is the authoritative description of its
@@ -134,19 +151,24 @@ the repo root may hold additional design notes/references.
 (non-user-editable) per-layer ADSR timings from the original Faust sound
 design, three global macros applied identically to every layer each block
 (`attackTimeScale`, `releaseTimeScale`, `brightness` — the last ramped
-per-sample via `smoothedBrightness` to avoid filter zipper noise), and each
-layer's own per-layer stereo WIDTH (a short ≤90-sample Haas delay tap,
-alternated left/right per layer via `setWidthLeadChannel()` so the four
-layers' precedence-effect pulls roughly cancel in the mix — see the width
-block comment in `LayerBase.h` for why a naive equal-gain delay tap would
-null in mono). `FxChain.h/.cpp` holds only the shared reverb send now (WIDTH
-used to live there as one global macro; it moved to a per-pad knob).
+per-sample via `smoothedBrightness` to avoid filter zipper noise), each
+layer's own stereo WIDTH (spreads each voice's detuned oscillators across the
+field, constant-power, mirrored on odd voices; mono-safe and level-flat - it
+replaced a Haas tap on 2026-09-26), and the register helpers every layer uses:
+`keyTrack` (asymmetric key tracking anchored at C4, the voicing note),
+`unisonFor` (partners and drift tighten below C3), smoothed-random `Drift`,
+`polyBlampTriangle`. `FxChain.h/.cpp` holds the shared reverb send: the side
+channel is high-passed at 140 Hz first (mono bass), then a one-pole split at
+160 Hz keeps the bass dry and only the band above is sent (20 ms pre-delay) and
+crossfaded equal-power.
 
 ### Voice allocation
 
 Centralized in `PluginProcessor`, not per-layer: up to `kMaxVoices` (8) voice
-slots, three-tier stealing (free slot → oldest released-but-ringing slot →
-oldest held note). Every layer is told about the same note in the same voice
+slots, four-tier stealing (free slot → oldest released-but-ringing slot →
+oldest note held only by the sustain pedal → oldest held key). CC64 holds
+released keys until pedal-up; striking a key that is already sounding releases
+its old voice first. Every layer is told about the same note in the same voice
 slot each block, so a chord stays coherent across all four layers.
 
 ### Parameters and thread-safety model
@@ -207,5 +229,7 @@ permission, staying inside individual layer `.h`/`.cpp` files.
 
 ## DSP work
 
-Invariants load automatically for `Source/**` and `*.dsp`. For design, porting, measurement or review, use `/dsp-playbook`. For a specific defect, `/dsp-diagnose`. Reference: `docs/dsp-sound-design-playbook.md` - grep it, never read it whole.
+Invariants load automatically for `Source/**` and `*.dsp`. For design, porting, measurement or review, use `/dsp-playbook`. For a specific defect, `/dsp-diagnose`. The playbook is user-level, not in this repo: core card `~/.claude/docs/dsp-playbook-core.md` (read whole), reference `~/.claude/docs/dsp-sound-design-playbook.md` (grep it, never read it whole).
+
+The playbook is at v2.2 (2026-09-26): 28 rules, including range-and-chords verification, sustain pedal, mono bass, power-complementary splits and a verified harness (24-28), plus briefs by musical role (2.6-2.9) and register design (1.4). Branch `sound-design-v2` is the sound-design pass that brought this repo in line with them; see `docs/dsp-review-2026-09-26.md` (the findings) and `docs/sound-design-v2.md` (what changed, measured, and the listening list still owed).
 

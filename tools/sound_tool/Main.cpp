@@ -122,7 +122,22 @@ namespace
             const auto eq = arg.indexOfChar ('=');
 
             if (eq >= 0)
-                args.values[arg.substring (0, eq)] = arg.substring (eq + 1);
+            {
+                const auto key = arg.substring (0, eq);
+                const auto value = arg.substring (eq + 1);
+
+                // --param is repeatable. It used to be stored like every other
+                // flag, so a repeated --param silently kept only the LAST one:
+                // `--param=reverb=0 --param=root-width=0` rendered with the
+                // reverb on. Every script that passed several (the G5 null
+                // test, the alias and EDR measurements, two regression tests)
+                // measured a different patch than it asked for. Accumulate
+                // instead, in the same ';'-separated form the batch syntax uses.
+                if (key == "param" && args.has ("param"))
+                    args.values[key] = args.values[key] + ";" + value;
+                else
+                    args.values[key] = value;
+            }
             else
                 args.values[arg] = "1"; // bare flag
         }
@@ -152,7 +167,9 @@ namespace
             "  --note-holds=6,6,2     Per-note hold durations in seconds, matched positionally\n"
             "                         to --notes. Missing entries default to --hold.\n"
             "                         Together these make voice stealing testable, e.g.\n"
-            "                         8 notes at 0 plus a 9th at 3s on an 8-slot engine.\n\n"
+            "                         8 notes at 0 plus a 9th at 3s on an 8-slot engine.\n"
+            "  --pedal=2,5[,6,8]      Sustain pedal (CC64) down/up times in seconds, in\n"
+            "                         pairs. The render extends past the last pedal-up.\n\n"
             "Patch selection (applied in this order - each stage can override the last):\n"
             "  --preset=<name|index>  Apply a factory preset first (see --list-presets)\n"
             "  --solo=root,clearing   Zero every OTHER layer's volume, set these to 1.0\n"
@@ -1132,9 +1149,10 @@ static int runTool (int argc, char* argv[])
         }
     }
 
-    // 3) Raw parameter overrides, repeatable: --param=id=value. Because a
-    //    single flag can only appear once in our simple parser's map, allow
-    //    a semicolon-separated batch too: --param=root=1;filter=0.8
+    // 3) Raw parameter overrides, repeatable: --param=id=value. Repeated flags
+    //    accumulate (see parseArgs); a semicolon-separated batch works too:
+    //    --param=root=1;filter=0.8. The applied state is echoed back under
+    //    "activeParams" - scripts should assert on it.
     if (args.has ("param"))
     {
         const auto raw = args.getString ("param", "");
@@ -1181,7 +1199,23 @@ static int runTool (int argc, char* argv[])
     // Kept as the name the JSON has always used: the LAST note-off, i.e. the
     // point after which only release and reverb tail remain.
     const int noteOffSample = lastOffSample;
-    const int totalSamples  = lastOffSample + (int) std::round (tailSeconds * sampleRate);
+
+    // Sustain pedal: --pedal=down,up[,down,up...] in seconds, sent as CC64
+    // 127 / 0. The render runs until the tail after the later of the last
+    // note-off and the last pedal-up, so a pedalled release is captured.
+    std::vector<std::pair<int, int>> pedalEvents; // (sample, value)
+    {
+        const auto times = args.getList ("pedal", "");
+
+        for (size_t i = 0; i < times.size(); ++i)
+            pedalEvents.push_back ({ (int) std::round (times[i].getDoubleValue() * sampleRate), i % 2 == 0 ? 127 : 0 });
+    }
+
+    int lastEventSample = lastOffSample;
+    for (auto& [sample, value] : pedalEvents)
+        lastEventSample = juce::jmax (lastEventSample, sample);
+
+    const int totalSamples  = lastEventSample + (int) std::round (tailSeconds * sampleRate);
 
     juce::AudioBuffer<float> render (2, juce::jmax (1, totalSamples));
     render.clear();
@@ -1204,6 +1238,10 @@ static int runTool (int argc, char* argv[])
             if (sn.offSample >= position && sn.offSample < position + blockLen)
                 midi.addEvent (juce::MidiMessage::noteOff (1, sn.note), sn.offSample - position);
         }
+
+        for (auto& [sample, value] : pedalEvents)
+            if (sample >= position && sample < position + blockLen)
+                midi.addEvent (juce::MidiMessage::controllerEvent (1, 64, value), sample - position);
 
         juce::AudioBuffer<float> block (render.getArrayOfWritePointers(), 2, position, blockLen);
         processor.processBlock (block, midi);

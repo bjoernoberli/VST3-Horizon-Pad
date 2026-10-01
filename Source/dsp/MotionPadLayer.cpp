@@ -5,15 +5,16 @@ namespace horizon
 
 void MotionPadLayer::prepareLayer (const juce::dsp::ProcessSpec&)
 {
-    const juce::dsp::ProcessSpec monoSpec { sampleRate, (juce::uint32) maxBlockSize, 1 };
+    const juce::dsp::ProcessSpec stereoSpec { sampleRate, (juce::uint32) maxBlockSize, 2 };
 
     for (auto& vs : voiceState)
     {
-        vs.filter.prepare (monoSpec);
+        vs.filter.prepare (stereoSpec);
         vs.filter.setType (juce::dsp::StateVariableTPTFilterType::lowpass);
         vs.filter.setResonance (0.5f);
     }
 
+    lfoBlock.setSize (2, maxBlockSize, false, true, false);
     resetLayer();
 }
 
@@ -22,11 +23,18 @@ void MotionPadLayer::resetLayer()
     for (auto& vs : voiceState)
     {
         vs.phase.fill (0.0f);
-        vs.driftPhase.fill (0.0f);
-        vs.tremPhase = 0.0f;
-        vs.filterLfoPhase = 0.0f;
+        vs.drift = {};
         vs.filter.reset();
     }
+
+    lfoBlock.clear();
+    reseedLayerState();
+}
+
+void MotionPadLayer::reseedLayerState()
+{
+    tremPhase = rng.nextFloat();
+    filterLfoPhase = rng.nextFloat();
 }
 
 void MotionPadLayer::startVoice (int voiceIndex, float, float)
@@ -36,12 +44,27 @@ void MotionPadLayer::startVoice (int voiceIndex, float, float)
     for (int i = 0; i < kNumOscs; ++i)
     {
         vs.phase[(size_t) i] = rng.nextFloat();
-        vs.driftPhase[(size_t) i] = rng.nextFloat();
+        vs.drift[(size_t) i].start (rng, kOscDriftRateHz[i], sampleRate);
     }
 
-    vs.tremPhase = rng.nextFloat();
-    vs.filterLfoPhase = rng.nextFloat();
     vs.filter.reset();
+}
+
+void MotionPadLayer::beginBlock (int numSamples)
+{
+    const auto invSr = 1.0f / (float) sampleRate;
+    const auto twoPi = juce::MathConstants<float>::twoPi;
+    auto* trem = lfoBlock.getWritePointer (0);
+    auto* cutoff = lfoBlock.getWritePointer (1);
+
+    for (int n = 0; n < juce::jmin (numSamples, lfoBlock.getNumSamples()); ++n)
+    {
+        filterLfoPhase = wrapPhase (filterLfoPhase + 0.6f * invSr);
+        tremPhase = wrapPhase (tremPhase + 3.2f * invSr);
+
+        cutoff[n] = std::sin (filterLfoPhase * twoPi) * 600.0f + 1400.0f;
+        trem[n] = std::sin (tremPhase * twoPi) * 0.35f + 0.65f;
+    }
 }
 
 void MotionPadLayer::renderVoice (int voiceIndex, juce::AudioBuffer<float>& target, int numSamples)
@@ -51,11 +74,19 @@ void MotionPadLayer::renderVoice (int voiceIndex, juce::AudioBuffer<float>& targ
 
     auto* left  = target.getWritePointer (0);
     auto* right = target.getWritePointer (1);
+    const auto* trem = lfoBlock.getReadPointer (0);
+    const auto* lfoCutoff = lfoBlock.getReadPointer (1);
 
     const auto invSr = 1.0f / (float) sampleRate;
-    const auto driftDepth = 0.004f + modAmount * 0.010f;
-    const auto level = 0.24f * v.velocity;
     const auto baseFreq = bentFrequency (v.frequency);
+    const auto unison = unisonFor (baseFreq, kNumOscs);
+    const auto driftDepth = (0.004f + modAmount * 0.010f) * unison.driftScale;
+    const auto level = 0.25f * v.velocity; // 0.24 in v1: +0.35 dB restores v1's level, which the shared LFOs and new drift left 0.35 dB low (six-seed match, WIDTH 0)
+    const auto tracking = keyTrack (baseFreq, kCutoffTrackingBelowC4, kCutoffTrackingAboveC4);
+
+    std::array<PanRamp, kNumOscs> pan;
+    for (int i = 0; i < kNumOscs; ++i)
+        pan[(size_t) i] = makePanRamp (kOscSpread[i], voiceIndex);
 
     for (int n = 0; n < numSamples; ++n)
     {
@@ -64,35 +95,28 @@ void MotionPadLayer::renderVoice (int voiceIndex, juce::AudioBuffer<float>& targ
         const auto stealGain = nextStealGain (v);
         const auto brightness = effectiveBrightness (voiceIndex, n);
 
-        float stack = 0.0f;
+        float stackL = 0.0f, stackR = 0.0f;
 
         for (int i = 0; i < kNumOscs; ++i)
         {
-            vs.driftPhase[(size_t) i] = wrapPhase (vs.driftPhase[(size_t) i] + kOscDriftRateHz[i] * invSr);
-            const auto drift = std::sin (vs.driftPhase[(size_t) i] * juce::MathConstants<float>::twoPi) * driftDepth;
-
+            const auto drift = vs.drift[(size_t) i].next (rng, kOscDriftRateHz[i], sampleRate) * driftDepth;
             const auto freqHz = baseFreq * (1.0f + kOscDetuneFraction[i] + drift);
             const auto inc = juce::jlimit (0.0f, 0.49f, freqHz * invSr);
             vs.phase[(size_t) i] = wrapPhase (vs.phase[(size_t) i] + inc);
 
-            stack += polyBlepSaw (vs.phase[(size_t) i], inc);
+            const auto saw = polyBlepSaw (vs.phase[(size_t) i], inc) * (i == 0 ? 1.0f : unison.partnerGain);
+            auto& p = pan[(size_t) i];
+            stackL += saw * p.left;
+            stackR += saw * p.right;
+            p.advance();
         }
 
-        stack *= 0.4f;
+        vs.filter.setCutoffFrequency (juce::jlimit (40.0f, (float) (sampleRate * 0.45),
+                                                    lfoCutoff[n] * brightness * tracking));
 
-        vs.filterLfoPhase = wrapPhase (vs.filterLfoPhase + 0.6f * invSr);
-        const auto filtLfo = std::sin (vs.filterLfoPhase * juce::MathConstants<float>::twoPi) * 600.0f + 1400.0f;
-        vs.filter.setCutoffFrequency (juce::jlimit (40.0f, (float) (sampleRate * 0.45), filtLfo * brightness));
-
-        const auto filtered = vs.filter.processSample (0, stack);
-
-        vs.tremPhase = wrapPhase (vs.tremPhase + 3.2f * invSr);
-        const auto trem = std::sin (vs.tremPhase * juce::MathConstants<float>::twoPi) * 0.35f + 0.65f;
-
-        const auto s = filtered * envGain * level * trem * stealGain;
-
-        left[n]  += s;
-        right[n] += s;
+        const auto gain = envGain * level * trem[n] * stealGain;
+        left[n]  += vs.filter.processSample (0, stackL * 0.4f * unison.normalise) * gain;
+        right[n] += vs.filter.processSample (1, stackR * 0.4f * unison.normalise) * gain;
     }
 }
 
