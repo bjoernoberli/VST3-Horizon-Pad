@@ -181,7 +181,7 @@ def test_shimmer_octave_present():
     with tempfile.TemporaryDirectory() as tmp:
         p = os.path.join(tmp, "e.wav")
         run(["--solo=expanse", "--notes=60", "--seed=11", "--velocity=1.0",
-             "--param=reverb=0", "--param=filter=0.5", "--param=expanse-width=0",
+             "--param=reverb=0", "--param=filter=0.5", "--param=width=0",
              "--hold=4", "--tail=2", f"--out={p}"])
         x, sr = read(p)
         octave = band_energy_db(x, sr, 900, 1200)
@@ -203,7 +203,7 @@ def test_width_is_rate_invariant():
     corrs = []
     for sr in (44100, 48000, 96000, 192000):
         x, fs = render(["--solo=root", "--notes=60", f"--sample-rate={sr}", "--seed=5",
-                        "--param=root-width=1.0", "--param=reverb=0", "--hold=3", "--tail=0.2"])
+                        "--param=width=1.0", "--param=reverb=0", "--hold=3", "--tail=0.2"])
         seg = window(x, fs, 1.0, 3.0)
         corrs.append(float(np.corrcoef(seg[:, 0], seg[:, 1])[0, 1]))
     if max(corrs) - min(corrs) > 0.1:
@@ -224,7 +224,7 @@ def test_root_sub_present():
     must be gone.
     """
     x, sr = render(["--solo=root", "--notes=48", "--seed=3", "--param=reverb=0",
-                    "--param=root-width=0", "--hold=4", "--tail=0.2"])
+                    "--param=width=0", "--hold=4", "--tail=0.2"])
     sub = band_energy_db(x, sr, 60, 71)
     if sub < -30.0:
         raise Fail(f"Root's sub-octave at C3 is {sub:.1f} dB below the peak; expected above -30 dB")
@@ -238,7 +238,7 @@ def test_clearing_ensemble_present():
     leaves the channels identical.
     """
     x, sr = render(["--solo=clearing", "--notes=60", "--seed=3", "--param=reverb=0",
-                    "--param=clearing-width=0", "--hold=4", "--tail=0.2"])
+                    "--param=width=0", "--hold=4", "--tail=0.2"])
     seg = window(x, sr, 2.0, 4.0)
     c = float(np.corrcoef(seg[:, 0], seg[:, 1])[0, 1])
     if c > 0.95:
@@ -252,7 +252,7 @@ def test_bloom_tremolo_survives_chords():
     pulse from 44% to 16% (review S-5). The LFO is shared now.
     """
     x, sr = render(["--solo=bloom", "--notes=48,55,60,64", "--seed=3", "--param=reverb=0",
-                    "--param=bloom-width=0", "--hold=10", "--tail=0.2"])
+                    "--param=width=0", "--hold=10", "--tail=0.2"])
     depth = am_depth_at(window(x, sr, 4.0, 10.0), sr, 3.2)
     if depth < 30.0:
         raise Fail(f"Bloom's tremolo depth in a chord is {depth:.1f}%, expected at least 30%")
@@ -285,13 +285,14 @@ def test_width_mono_safe_and_level_flat():
     """WIDTH 100% neither collapses in mono nor changes the level.
 
     The Haas tap it replaced combed in mono (-2.7 to -2.9 dB mono-sum loss)
-    and lost ~1.5 dB of level at full width (rule 8).
+    and lost ~1.5 dB of level at full width (rule 8). At WIDTH 100% every pad
+    sits at its own profile's maximum (Root 60%, Bloom 90%, the others 100%).
     """
     for layer in ("root", "clearing", "expanse", "bloom"):
         lv = {}
         for width in (0.0, 1.0):
             x, sr = render([f"--solo={layer}", "--notes=48,55,60,64", "--seed=3", "--param=reverb=0",
-                            f"--param={layer}-width={width}", "--hold=6", "--tail=0.2"])
+                            f"--param=width={width}", "--hold=6", "--tail=0.2"])
             seg = window(x, sr, 3.0, 6.0)
             lv[width] = lufs(seg, sr)
             if width == 1.0:
@@ -345,20 +346,36 @@ def test_voice_steal_declick():
 
     Taking over a slot used to hard-reset the envelope mid-cycle; the worst
     of eight runs stepped +3.8 dB relative to the signal.
+
+    Seeded over twelve fixed seeds (rule 23). The first version took the worst
+    of six *unseeded* renders per side and failed about 2 runs in 10 on a
+    correct build: the step metric is the largest sample-to-sample jump, so
+    saw edges at random phases make single values swing by 10 dB. Measured
+    2026-10-03 over seeds 1-12 (median steal - median free / worst steal vs
+    worst free): 5056369 -1.8 dB / -12.4 vs -11.2; 05c3f44 -2.1 dB /
+    -11.4 vs -9.2; 5056369 with the declick removed +7.9 dB / -0.6 vs -11.2,
+    which fails both conditions below by about 5 dB.
     """
-    def worst(notes, onsets):
+    seeds = range(1, 13)
+
+    def steps(notes, onsets):
         vals = []
-        for _ in range(6):
-            d = run([f"--notes={notes}", f"--note-onsets={onsets}",
+        for seed in seeds:
+            d = run([f"--notes={notes}", f"--note-onsets={onsets}", f"--seed={seed}",
                      "--hold=6", "--tail=1", "--probe-at=3.0"])
             vals.append(d["transients"]["probes"][0]["stepRelDb"])
-        return max(vals)
+        return sorted(vals)
 
-    steal = worst("60,62,64,65,67,69,71,72,74", "0,0,0,0,0,0,0,0,3")
-    free = worst("60,62,64,65,67,69,71,74", "0,0,0,0,0,0,0,3")
-    # A steal may not be more than 6 dB worse than a free-slot note-on.
-    if steal > free + 6.0:
-        raise Fail(f"voice steal steps {steal:.1f} dB vs {free:.1f} dB for a "
+    def median(v):
+        return 0.5 * (v[len(v) // 2 - 1] + v[len(v) // 2])
+
+    steal = steps("60,62,64,65,67,69,71,72,74", "0,0,0,0,0,0,0,0,3")
+    free = steps("60,62,64,65,67,69,71,74", "0,0,0,0,0,0,0,3")
+    if median(steal) > median(free) + 3.0:
+        raise Fail(f"voice steal median step {median(steal):.1f} dB vs {median(free):.1f} dB "
+                   "for a free slot - declick ramp regressed")
+    if steal[-1] > free[-1] + 6.0:
+        raise Fail(f"voice steal worst step {steal[-1]:.1f} dB vs {free[-1]:.1f} dB for a "
                    "free slot - declick ramp regressed")
 
 
@@ -391,23 +408,121 @@ def test_low_register_stays_musical():
 
 
 def test_bass_is_mono():
-    """Below ~120 Hz the output is mono, whatever WIDTH does above it.
+    """Below ~120 Hz the output is mono, whatever WIDTH or the reverb does above it.
 
     WIDTH spreads whole oscillators; without the side high-pass a C2 chord at
-    full width put its fundamentals into the side channel.
+    full width put its fundamentals into the side channel. DETUNE at 100%
+    decorrelates the stacks further, so it is the worst case.
+
+    With the reverb on, the dry bass was mono but the reverb's decorrelated
+    return rebuilt a side channel below the split: -5.3 to -5.6 dB under the
+    mid on Sternenzelt and Bergecho (tools/measure/translation.py, 2026-10-03),
+    because the side high-pass ran before the send. The second render guards
+    that, tail included.
     """
-    x, sr = render(["--notes=36,43,48", "--seed=3", "--param=reverb=0",
-                    "--param=root=1;clearing=1;expanse=1;bloom=1",
-                    "--param=root-width=1;clearing-width=1;expanse-width=1;bloom-width=1",
-                    "--hold=6", "--tail=0.2"])
     from scipy import signal
-    seg = window(x, sr, 3.0, 6.0)
-    b, a = signal.butter(4, 100, fs=sr)
-    mid = signal.lfilter(b, a, seg.mean(axis=1))
-    side = signal.lfilter(b, a, 0.5 * (seg[:, 0] - seg[:, 1]))
-    ratio = 10 * np.log10((side ** 2).mean() / ((mid ** 2).mean() + 1e-20) + 1e-20)
-    if ratio > -15.0:
-        raise Fail(f"side below 100 Hz is only {ratio:.1f} dB under the mid at full width")
+    b, a = signal.butter(4, 100, fs=48000)
+
+    def side_under_mid(reverb, t0, t1, tail):
+        x, sr = render(["--notes=36,43,48", "--seed=3", f"--param=reverb={reverb}",
+                        "--param=root=1;clearing=1;expanse=1;bloom=1",
+                        "--param=width=1;detune=1",
+                        "--hold=6", f"--tail={tail}"])
+        seg = window(x, sr, t0, t1)
+        mid = signal.lfilter(b, a, seg.mean(axis=1))
+        side = signal.lfilter(b, a, 0.5 * (seg[:, 0] - seg[:, 1]))
+        return 10 * np.log10((side ** 2).mean() / ((mid ** 2).mean() + 1e-20) + 1e-20)
+
+    dry = side_under_mid(0, 3.0, 6.0, 0.2)
+    if dry > -15.0:
+        raise Fail(f"side below 100 Hz is only {dry:.1f} dB under the mid at full width")
+    wet = side_under_mid(1, 3.0, 8.0, 2.0)
+    if wet > -15.0:
+        raise Fail(f"with REVERB 100% the side below 100 Hz is only {wet:.1f} dB under the "
+                   "mid - the reverb return is putting stereo back into the bass")
+
+
+# --------------------------------------------------------------------------
+# WIDTH and DETUNE macros (2026-10-02)
+# --------------------------------------------------------------------------
+
+def test_width_profile_staggered():
+    """WIDTH opens the pads in order: the air first, the foundation last.
+
+    One WIDTH macro drives all four pads through each pad's fixed profile
+    (LayerBase::widthProfile()): Expanse opens from 0%, Clearing from 10%,
+    Bloom from 20%, Root from 30%. Before 2026-10-02 every pad had its own
+    WIDTH knob and every factory preset set all four alike, so the shape
+    across the pads never changed. At 15% Root and Bloom must still be
+    exactly mono while Expanse has opened; at 29% Root must still be mono
+    while Clearing and Bloom have opened; and no pad may narrow as WIDTH rises.
+    """
+    steps = (0.0, 0.15, 0.29, 0.5, 1.0)
+    corr = {}
+    for layer in ("root", "clearing", "expanse", "bloom"):
+        corr[layer] = []
+        for w in steps:
+            x, sr = render([f"--solo={layer}", "--notes=48,55,60,64", "--seed=3", "--param=reverb=0",
+                            f"--param=width={w}", "--hold=6", "--tail=0.2"])
+            seg = window(x, sr, 3.0, 6.0)
+            corr[layer].append(float(np.corrcoef(seg[:, 0], seg[:, 1])[0, 1]))
+
+    for layer, i in (("root", 1), ("root", 2), ("bloom", 1)):
+        if abs(corr[layer][i] - corr[layer][0]) > 1e-4:
+            raise Fail(f"{layer} has opened at WIDTH {steps[i]:.0%} (L/R correlation "
+                       f"{corr[layer][0]:.4f} -> {corr[layer][i]:.4f}); its profile should keep it mono")
+    for layer, i in (("expanse", 1), ("clearing", 2), ("bloom", 2)):
+        if corr[layer][0] - corr[layer][i] < 0.002:
+            raise Fail(f"{layer} has not opened by WIDTH {steps[i]:.0%} (L/R correlation "
+                       f"{corr[layer][0]:.4f} -> {corr[layer][i]:.4f})")
+    for layer, vals in corr.items():
+        if any(b > a + 0.002 for a, b in zip(vals, vals[1:])):
+            raise Fail(f"{layer} narrows as WIDTH rises: correlation {[round(v, 4) for v in vals]}")
+
+
+def _partial_spread_cents(x, sr, target_hz):
+    """Power-weighted pitch spread, in cents, of the partial nearest target_hz."""
+    m = x.mean(axis=1)
+    p = np.abs(np.fft.rfft(m * np.hanning(len(m)))) ** 2
+    f = np.fft.rfftfreq(len(m), 1.0 / sr)
+    near = (f > target_hz * 0.985) & (f < target_hz * 1.015)
+    peak = f[np.argmax(np.where(near, p, 0.0))]
+    win = (f > peak * 0.975) & (f < peak * 1.025)
+    pw, fw = p[win], f[win]
+    mean = (pw * fw).sum() / pw.sum()
+    std = np.sqrt((pw * (fw - mean) ** 2).sum() / pw.sum())
+    return 1200.0 * np.log2(1.0 + std / mean)
+
+
+def test_detune_spreads_every_stack():
+    """DETUNE widens every pad's unison spread and leaves the level alone (rule 8).
+
+    DETUNE scales each stack's static detune and its baseline drift - and on
+    Clearing, Expanse and Bloom the drift is most of the spread. Measured as
+    the pitch spread of one partial of a held C4 (5 s window, 0.2 Hz bins),
+    three seeds. Clearing's ensemble adds pitch movement of its own that
+    DETUNE does not touch, so its ratio is the smallest.
+    """
+    partial = {"root": 784.9, "clearing": 1046.5, "expanse": 523.3, "bloom": 784.9}
+    for layer, hz in partial.items():
+        spread, level = {}, {}
+        for amount in (0.0, 0.5, 1.0):
+            s, lv = [], []
+            for seed in (3, 4, 5):
+                x, sr = render([f"--solo={layer}", "--notes=60", f"--seed={seed}", "--param=reverb=0",
+                                "--param=width=0", "--param=filter=0.5", f"--param=detune={amount}",
+                                "--hold=8", "--tail=0.2"])
+                seg = window(x, sr, 3.0, 8.0)
+                s.append(_partial_spread_cents(seg, sr, hz))
+                lv.append(lufs(seg, sr))
+            spread[amount], level[amount] = float(np.mean(s)), float(np.mean(lv))
+        if spread[1.0] < 1.25 * spread[0.0]:
+            raise Fail(f"{layer}: DETUNE 0 -> 100% only moves the {hz:.0f} Hz partial's spread "
+                       f"from {spread[0.0]:.2f} to {spread[1.0]:.2f} cents")
+        for amount in (0.0, 1.0):
+            if abs(level[amount] - level[0.5]) > 1.0:
+                raise Fail(f"{layer}: DETUNE 50 -> {amount:.0%} changes loudness by "
+                           f"{level[amount] - level[0.5]:+.2f} LU")
 
 
 TESTS = {name[5:]: fn for name, fn in sorted(globals().items())

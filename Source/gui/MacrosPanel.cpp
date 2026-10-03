@@ -41,6 +41,14 @@ MacrosPanel::MacrosPanel (HorizonPadAudioProcessor& processor)
     setUpKnob (knobs[3], "REVERB",
               "How much reverb is mixed in - dry at 0%, a full wet tail at 100%.",
               ParamID::reverbMacro, Palette::macroAccents[3], processor);
+    setUpKnob (knobs[4], "WIDTH",
+              "Stereo width of the whole pad - 0% is mono. The airy pads open first (Expanse, then "
+              "Clearing and Bloom), the foundation (Root) last and least. Mono-safe; the bass stays centred.",
+              ParamID::widthMacro, Palette::macroAccents[4], processor);
+    setUpKnob (knobs[5], "DETUNE",
+              "How far apart each pad's stacked oscillators are tuned - 50% is the designed sound, "
+              "left is tighter and cleaner, right is wider and lusher. Eases off in the bass so low notes stay steady.",
+              ParamID::detuneMacro, Palette::macroAccents[5], processor);
 }
 
 MacrosPanel::~MacrosPanel() = default;
@@ -48,20 +56,15 @@ MacrosPanel::~MacrosPanel() = default;
 void MacrosPanel::resized()
 {
     const auto slots = computeColumnSlots (getLocalBounds());
+    const auto m = computeMacroGridLayout (slots.control.getUnion (slots.value));
 
-    // Same split PadKnob uses (see its resized()), so ATTACK/RELEASE line up
-    // with VOL and FILTER/REVERB line up with WIDTH across the grid row.
-    const auto t = computeTwoTierLayout (slots.control.getUnion (slots.value));
-
-    const auto placeRow = [] (juce::Rectangle<int> control, juce::Slider& left, juce::Slider& right, int size)
+    for (size_t row = 0; row < m.rows.size(); ++row)
     {
+        auto control = m.rows[row].control;
         const auto colWidth = control.getWidth() / 2;
-        left.setBounds (control.removeFromLeft (colWidth).withSizeKeepingCentre (size, size));
-        right.setBounds (control.withSizeKeepingCentre (size, size));
-    };
-
-    placeRow (t.primaryControl, knobs[0].slider, knobs[1].slider, 42);
-    placeRow (t.secondaryControl, knobs[2].slider, knobs[3].slider, 42);
+        knobs[row * 2].slider.setBounds (control.removeFromLeft (colWidth).withSizeKeepingCentre (m.knobSize, m.knobSize));
+        knobs[row * 2 + 1].slider.setBounds (control.withSizeKeepingCentre (m.knobSize, m.knobSize));
+    }
 }
 
 void MacrosPanel::paint (juce::Graphics& g)
@@ -82,13 +85,11 @@ void MacrosPanel::paint (juce::Graphics& g)
     g.setFont (labelFont (TypeScale::caption).italicised());
     g.drawFittedText ("shape the air", slots.caption, juce::Justification::centred, 2);
 
-    // Same split PadKnob uses (see its paint()), so this card's two rows
-    // line up with VOL/WIDTH across the grid: ATTACK/RELEASE level with
-    // VOL, FILTER/REVERB level with WIDTH, both sides of a shared divider.
-    const auto t = computeTwoTierLayout (slots.control.getUnion (slots.value));
+    const auto m = computeMacroGridLayout (slots.control.getUnion (slots.value));
 
     g.setColour (Palette::dividerColor);
-    g.fillRect (juce::Rectangle<int> (t.secondaryLabel.getX(), t.dividerY, t.secondaryLabel.getWidth(), 1));
+    for (auto y : m.dividerYs)
+        g.fillRect (juce::Rectangle<int> (m.rows[0].label.getX(), y, m.rows[0].label.getWidth(), 1));
 
     const auto drawPair = [&] (juce::Rectangle<int> labelArea, juce::Rectangle<int> valueArea,
                                float labelSize, float valueSize, int i0, int i1)
@@ -119,8 +120,8 @@ void MacrosPanel::paint (juce::Graphics& g)
         }
     };
 
-    drawPair (t.primaryLabel, t.primaryValue, 11.0f, 13.0f, 0, 1);
-    drawPair (t.secondaryLabel, t.secondaryValue, 10.0f, 11.0f, 2, 3);
+    for (size_t row = 0; row < m.rows.size(); ++row)
+        drawPair (m.rows[row].label, m.rows[row].value, 10.0f, 11.0f, (int) row * 2, (int) row * 2 + 1);
 }
 
 } // namespace horizon::ui

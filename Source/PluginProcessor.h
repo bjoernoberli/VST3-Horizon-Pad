@@ -18,7 +18,7 @@
 
     Thread-safety model
     -------------------
-      * The eight host-automatable parameters (four pad volumes, four macros)
+      * The ten host-automatable parameters (four pad volumes, six macros)
         live in an AudioProcessorValueTreeState; the audio thread reads them
         through cached std::atomic<float>* pointers and applies them per block.
 
@@ -118,7 +118,7 @@ public:
     PresetKind getActivePresetKind() const noexcept { return (PresetKind) activePresetKind.load (std::memory_order_relaxed); }
     int getActivePresetIndex() const noexcept { return activePresetIndex.load (std::memory_order_relaxed); }
 
-    /** A/B buffers: two independent snapshots of all 8 parameters. */
+    /** A/B buffers: two independent snapshots of all 10 parameters. */
     int getActiveBufferIndex() const noexcept { return activeBufferIndex.load (std::memory_order_relaxed); }
     void switchBuffer (int index);
     void copyActiveBufferToOtherBuffer();
@@ -142,7 +142,6 @@ private:
 
     // Cached raw parameter pointers: no string lookups on the audio thread.
     std::array<std::atomic<float>*, (size_t) horizon::kNumLayers> volumeParams {};
-    std::array<std::atomic<float>*, (size_t) horizon::kNumLayers> widthParams {};
     std::array<std::atomic<float>*, (size_t) horizon::kNumGlobalParams> macroParams {};
 
     horizon::PerformanceState performanceState;
@@ -211,7 +210,6 @@ private:
     struct BufferSnapshot
     {
         std::array<std::atomic<float>, (size_t) horizon::kNumLayers> vols;
-        std::array<std::atomic<float>, (size_t) horizon::kNumLayers> widths;
         std::array<std::atomic<float>, (size_t) horizon::kNumGlobalParams> macros;
     };
 

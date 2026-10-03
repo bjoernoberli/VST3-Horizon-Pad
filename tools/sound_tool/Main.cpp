@@ -49,11 +49,55 @@
 #include <array>
 #include <cmath>
 #include <cstdio>
+#include <cstdlib>
 #include <iostream>
 #include <limits>
 #include <map>
 #include <optional>
 #include <vector>
+
+// Real-time safety check (playbook rule 35, D.1.6). Configured with
+// -DHORIZON_RTSAN=ON and an upstream LLVM 20+ clang (Apple clang has no
+// RealtimeSanitizer), every processBlock call below runs inside a
+// [[clang::nonblocking]] function, so RTSan aborts with a stack trace on any
+// allocation, lock or system call the audio path reaches. In a normal build
+// the attribute is absent and this is a plain call.
+//
+// HORIZON_RTSAN_SELFTEST=1 in the environment proves the check is live
+// (rule 28): one heap allocation inside the real-time context, which must
+// abort with "unsafe-library-call ... malloc" on the first block.
+#if defined(__has_feature)
+ #if __has_feature(realtime_sanitizer)
+  #define HORIZON_NONBLOCKING [[clang::nonblocking]]
+  #define HORIZON_HAS_RTSAN 1
+ #endif
+#endif
+#ifndef HORIZON_NONBLOCKING
+ #define HORIZON_NONBLOCKING
+ #define HORIZON_HAS_RTSAN 0
+#endif
+
+#if HORIZON_HAS_RTSAN
+static const bool rtsanSelfTest = std::getenv ("HORIZON_RTSAN_SELFTEST") != nullptr; // read before any block
+static void* volatile rtsanSelfTestSink = nullptr;  // volatile: an unused new/delete pair may be elided
+
+static void rtsanSelfTestAllocation()
+{
+    rtsanSelfTestSink = std::malloc (64);
+    std::free (rtsanSelfTestSink);
+}
+#endif
+
+static void processBlockRealtime (juce::AudioProcessor& processor,
+                                  juce::AudioBuffer<float>& block,
+                                  juce::MidiBuffer& midi) HORIZON_NONBLOCKING
+{
+   #if HORIZON_HAS_RTSAN
+    if (rtsanSelfTest)
+        rtsanSelfTestAllocation();
+   #endif
+    processor.processBlock (block, midi);
+}
 
 using namespace horizon;
 
@@ -128,7 +172,7 @@ namespace
 
                 // --param is repeatable. It used to be stored like every other
                 // flag, so a repeated --param silently kept only the LAST one:
-                // `--param=reverb=0 --param=root-width=0` rendered with the
+                // `--param=reverb=0 --param=filter=0.5` rendered with the
                 // reverb on. Every script that passed several (the G5 null
                 // test, the alias and EDR measurements, two regression tests)
                 // measured a different patch than it asked for. Accumulate
@@ -179,8 +223,7 @@ namespace
             "                         --param=filterMacro=0.8 --param=reverbMacro=0\n"
             "                         Accepts either the raw ParamID or a short alias:\n"
             "                         root/clearing/expanse/bloom (volume),\n"
-            "                         root-width/clearing-width/expanse-width/bloom-width,\n"
-            "                         attack/release/filter/reverb (macros)\n\n"
+            "                         attack/release/filter/reverb/width/detune (macros)\n\n"
             "Analysis:\n"
             "  --window-ms=50         Envelope RMS window size in ms (default 50)\n"
             "  --fft-size=8192        Spectral analysis window length, rounded to the\n"
@@ -227,13 +270,8 @@ namespace
             { "release",  ParamID::releaseMacro },
             { "filter",   ParamID::filterMacro },
             { "reverb",   ParamID::reverbMacro },
-
-            // Per-layer width knobs (width moved off the shared macros and
-            // onto each pad's own card - see LayerBase::setWidth()).
-            { "root-width",     ParamID::rootWidth },
-            { "clearing-width", ParamID::clearingWidth },
-            { "expanse-width",  ParamID::expanseWidth },
-            { "bloom-width",    ParamID::bloomWidth },
+            { "width",    ParamID::widthMacro },
+            { "detune",   ParamID::detuneMacro },
 
             // LayerIndex-style names, also accepted for --solo.
             { "warmfoundation", ParamID::rootVolume },
@@ -293,18 +331,13 @@ namespace
         vols->setProperty ("bloom", p.volumes[(size_t) LayerIndex::motionPad]);
         obj->setProperty ("volumes", juce::var (vols));
 
-        auto* widths = new juce::DynamicObject();
-        widths->setProperty ("root", p.widths[(size_t) LayerIndex::warmFoundation]);
-        widths->setProperty ("clearing", p.widths[(size_t) LayerIndex::analogEnsemble]);
-        widths->setProperty ("expanse", p.widths[(size_t) LayerIndex::airyChoir]);
-        widths->setProperty ("bloom", p.widths[(size_t) LayerIndex::motionPad]);
-        obj->setProperty ("widths", juce::var (widths));
-
         auto* macros = new juce::DynamicObject();
-        macros->setProperty ("attack", p.macros[0]);
-        macros->setProperty ("release", p.macros[1]);
-        macros->setProperty ("filter", p.macros[2]);
-        macros->setProperty ("reverb", p.macros[3]);
+        macros->setProperty ("attack", p.macros[attackMacroIndex]);
+        macros->setProperty ("release", p.macros[releaseMacroIndex]);
+        macros->setProperty ("filter", p.macros[filterMacroIndex]);
+        macros->setProperty ("reverb", p.macros[reverbMacroIndex]);
+        macros->setProperty ("width", p.macros[widthMacroIndex]);
+        macros->setProperty ("detune", p.macros[detuneMacroIndex]);
         obj->setProperty ("macros", juce::var (macros));
 
         return juce::var (obj);
@@ -1114,16 +1147,9 @@ static int runTool (int argc, char* argv[])
             if (auto* p = processor.getAPVTS().getParameter (allVolumeIds()[(size_t) i]))
                 p->setValueNotifyingHost (p->convertTo0to1 (preset->volumes[(size_t) i]));
 
-        static const std::array<const char*, kNumLayers> widthIds {
-            ParamID::rootWidth, ParamID::clearingWidth, ParamID::expanseWidth, ParamID::bloomWidth
-        };
-
-        for (int i = 0; i < kNumLayers; ++i)
-            if (auto* p = processor.getAPVTS().getParameter (widthIds[(size_t) i]))
-                p->setValueNotifyingHost (p->convertTo0to1 (preset->widths[(size_t) i]));
-
         static const std::array<const char*, kNumGlobalParams> macroIds {
-            ParamID::attackMacro, ParamID::releaseMacro, ParamID::filterMacro, ParamID::reverbMacro
+            ParamID::attackMacro, ParamID::releaseMacro, ParamID::filterMacro, ParamID::reverbMacro,
+            ParamID::widthMacro, ParamID::detuneMacro
         };
 
         for (int i = 0; i < kNumGlobalParams; ++i)
@@ -1244,7 +1270,7 @@ static int runTool (int argc, char* argv[])
                 midi.addEvent (juce::MidiMessage::controllerEvent (1, 64, value), sample - position);
 
         juce::AudioBuffer<float> block (render.getArrayOfWritePointers(), 2, position, blockLen);
-        processor.processBlock (block, midi);
+        processBlockRealtime (processor, block, midi);
 
         position += blockLen;
     }
@@ -1406,13 +1432,12 @@ static int runTool (int argc, char* argv[])
 
     {
         auto* params = new juce::DynamicObject();
-        static const std::array<std::pair<const char*, const char*>, 12> shown {{
+        static const std::array<std::pair<const char*, const char*>, 10> shown {{
             { "root", ParamID::rootVolume }, { "clearing", ParamID::clearingVolume },
             { "expanse", ParamID::expanseVolume }, { "bloom", ParamID::bloomVolume },
-            { "root-width", ParamID::rootWidth }, { "clearing-width", ParamID::clearingWidth },
-            { "expanse-width", ParamID::expanseWidth }, { "bloom-width", ParamID::bloomWidth },
             { "attack", ParamID::attackMacro }, { "release", ParamID::releaseMacro },
-            { "filter", ParamID::filterMacro }, { "reverb", ParamID::reverbMacro }
+            { "filter", ParamID::filterMacro }, { "reverb", ParamID::reverbMacro },
+            { "width", ParamID::widthMacro }, { "detune", ParamID::detuneMacro }
         }};
 
         for (auto& [alias, id] : shown)

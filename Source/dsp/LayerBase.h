@@ -45,8 +45,13 @@ namespace horizon
                                freezeBrightnessForActiveVoices() - see its doc
                                comment for why.
 
-    Stereo width is set per layer (each pad has its own WIDTH knob, see
-    setWidth()). Since sound-design v2 (2026-09-26) it is built by spreading
+    Stereo width comes from one WIDTH macro shared by all four layers. Each
+    layer turns it into its own width through a fixed profile
+    (widthProfile(): where on the knob the layer starts to open, and how wide
+    it gets), so the shape across the pads changes as the knob turns - the
+    air opens first, the foundation last and least. Until 2026-10-02 there
+    was a WIDTH knob per pad, and every factory preset set all four to the
+    same value. Since sound-design v2 (2026-09-26) the width itself is built by spreading
     each voice's detuned oscillators across the stereo field (panGains()),
     not by a Haas delay tap on the summed layer. Detuned oscillators are
     decorrelated, so the spread is mono-safe by construction - no comb
@@ -54,6 +59,16 @@ namespace horizon
     WIDTH 0 to 1. The old Haas tap measured a comb in mono and a ~1.5 dB
     level drop at full width (docs/dsp-review-2026-09-26.md, S-3). WIDTH 0
     reproduces the old mono sound exactly: every pan gain is 1.
+
+    DETUNE (2026-10-02) scales every layer's unison spread: the static detune
+    of each stack oscillator and its baseline drift - and on Clearing, Expanse
+    and Bloom the drift is most of the spread (static detune 0.3-1.6 cents,
+    drift about +/-7). The multiplier runs 0.5x..2x on the macroMultiplier
+    curve, so 50% is the designed sound, bit-exact. It eases out below C3
+    (makeDetuneRamp(), the same register blend as unisonFor()), so the bass
+    tightening keeps low notes stable whatever DETUNE does. It leaves alone
+    what is not a unison partner: Root's saw edge and sub-octave, and the
+    extra drift the MOD wheel adds on top (driftDepth()).
 
     Performance state (pitch bend, mod wheel) also reaches every layer
     identically, set once per block:
@@ -93,6 +108,9 @@ public:
 
         smoothedWidth.reset (newSampleRate, 0.05);
         smoothedWidth.setCurrentAndTargetValue (0.0f);
+
+        smoothedDetune.reset (newSampleRate, 0.05);
+        smoothedDetune.setCurrentAndTargetValue (1.0f);
 
         // See effectiveBrightness()/render() below: FILTER's brightness
         // multiplier is ramped per sample, the same way width and (in the
@@ -153,11 +171,19 @@ public:
         }
     }
 
-    /** Called from the audio thread, once per block. 0 = mono (every
-        oscillator centred), 1 = each layer's full designed spread. */
-    void setWidth (float newWidth) noexcept
+    /** Called from the audio thread, once per block, with the WIDTH macro
+        (0..1). widthProfile() turns it into this layer's own width: 0 = mono
+        (every oscillator centred), 1 = the layer's full designed spread. */
+    void setWidth (float widthMacro) noexcept
     {
-        smoothedWidth.setTargetValue (juce::jlimit (0.0f, 1.0f, newWidth));
+        smoothedWidth.setTargetValue (profiledWidth (widthProfile(), widthMacro));
+    }
+
+    /** Called from the audio thread, once per block, with the DETUNE macro's
+        multiplier (0.5..2, 1 = the designed detune). */
+    void setDetune (float newDetuneScale) noexcept
+    {
+        smoothedDetune.setTargetValue (juce::jlimit (0.25f, 4.0f, newDetuneScale));
     }
 
     /** Called from the audio thread, once per block. */
@@ -260,6 +286,12 @@ public:
         smoothedWidth.skip (numSamples);
         blockWidthEnd = smoothedWidth.getCurrentValue();
         blockLength = numSamples;
+
+        // DETUNE the same way: a per-sample ramp across the block (rule 18 -
+        // it drives pitch), see makeDetuneRamp().
+        blockDetuneStart = smoothedDetune.getCurrentValue();
+        smoothedDetune.skip (numSamples);
+        blockDetuneEnd = smoothedDetune.getCurrentValue();
 
         beginBlock (numSamples);
 
@@ -503,8 +535,67 @@ protected:
         return { l0, r0, (l1 - l0) * inv, (r1 - r0) * inv };
     }
 
-    /** This block's WIDTH at its end - for layer-wide stereo such as a bus reverb's width. */
+    /** This block's width at its end (after the profile) - for layer-wide
+        stereo such as a bus reverb's width. */
     float currentWidth() const noexcept { return blockWidthEnd; }
+
+    /**
+        Where on the WIDTH knob this layer starts to open, and how wide it gets
+        at 100%. Between `start` and 100% the layer's width rises linearly
+        from 0 to `maximum`; below `start` it stays mono. Fixed per layer, like
+        its ADSR timings - a statement of the pad's role, not a user setting.
+    */
+    struct WidthProfile
+    {
+        float start = 0.0f;
+        float maximum = 1.0f;
+    };
+
+    static float profiledWidth (WidthProfile profile, float widthMacro) noexcept
+    {
+        const auto x = juce::jlimit (0.0f, 1.0f, widthMacro);
+        const auto opened = juce::jlimit (0.0f, 1.0f, (x - profile.start) / (1.0f - profile.start));
+        return profile.maximum * opened;
+    }
+
+    /**
+        Per-block DETUNE ramp for one voice: the multiplier on the layer's
+        designed unison detune, interpolated across the block (rule 18).
+
+        Below C3 it eases back to 1 - the designed detune - reaching it at A1,
+        the same register blend unisonFor() uses to tighten the bass, so the
+        low register stays the stable note the register pass made it whatever
+        DETUNE is set to. At 1.0 (50%) every value is exactly 1, and the
+        layers' arithmetic reproduces the designed sound bit for bit.
+    */
+    struct DetuneRamp
+    {
+        float value = 1.0f, step = 0.0f;
+
+        void advance() noexcept { value += step; }
+    };
+
+    DetuneRamp makeDetuneRamp (float frequencyHz) const noexcept
+    {
+        const auto blend = registerBlend (frequencyHz, kBassRegisterLowHz, kBassRegisterHighHz);
+        const auto start = 1.0f + (blockDetuneStart - 1.0f) * blend;
+        const auto end   = 1.0f + (blockDetuneEnd - 1.0f) * blend;
+        return { start, (end - start) / (float) juce::jmax (1, blockLength) };
+    }
+
+    /**
+        Pitch-drift depth (as a frequency ratio) for an oscillator. The
+        baseline - Faust's drift() depth - scales with DETUNE (`detune`, from
+        a DetuneRamp; pass 1 for an oscillator that is not a unison partner);
+        the MOD wheel's extra movement is added on top, unscaled.
+    */
+    float driftDepth (float detune) const noexcept
+    {
+        return kBaseDriftDepth * detune + modAmount * kModDriftDepth;
+    }
+
+    static constexpr float kBaseDriftDepth = 0.004f;
+    static constexpr float kModDriftDepth = 0.010f;
 
     /** The FILTER macro value a voice should render with at this sample: its
         own frozen snapshot if freezeBrightnessForActiveVoices() caught it
@@ -566,6 +657,9 @@ protected:
     virtual float decaySeconds() const noexcept = 0;
     virtual float sustainLevel() const noexcept = 0;
     virtual float releaseSeconds() const noexcept = 0;
+
+    /** This layer's fixed response to the WIDTH macro - see WidthProfile. */
+    virtual WidthProfile widthProfile() const noexcept = 0;
 
     /** Cheap band-limited-ish saw: a polyBLEP-corrected ramp. */
     static float polyBlepSaw (float phase, float phaseIncrement) noexcept
@@ -680,11 +774,16 @@ protected:
     static constexpr float kStealFadeSeconds = 0.005f;
     int stealFadeSamples = 1;
 
-    /** This layer's own WIDTH knob - see setWidth() and makePanRamp(). */
+    /** This layer's width, after its profile - see setWidth() and makePanRamp(). */
     juce::SmoothedValue<float> smoothedWidth;
     float blockWidthStart = 0.0f;
     float blockWidthEnd = 0.0f;
     int blockLength = 1;
+
+    /** DETUNE multiplier - see setDetune() and makeDetuneRamp(). */
+    juce::SmoothedValue<float> smoothedDetune;
+    float blockDetuneStart = 1.0f;
+    float blockDetuneEnd = 1.0f;
 
     /** Set once per block by the processor from MIDI/UI performance state. */
     float pitchBendSemitones = 0.0f;

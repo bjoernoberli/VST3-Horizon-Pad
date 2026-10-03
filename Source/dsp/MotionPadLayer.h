@@ -40,6 +40,11 @@ protected:
     float sustainLevel() const noexcept override   { return 0.7f; }
     float releaseSeconds() const noexcept override { return 1.6f; }
 
+    /** The moving pad sits between the air and the foundation: it opens from
+        WIDTH 20% and stops at 90% of its spread, wide enough to surround,
+        not so wide that the shared tremolo smears across the field. */
+    WidthProfile widthProfile() const noexcept override { return { 0.20f, 0.90f }; }
+
 private:
     static constexpr int kNumOscs = 2;
     static constexpr float kOscDetuneFraction[2] { 0.0004f, -0.0005f }; // det * 0.01 from the Faust source

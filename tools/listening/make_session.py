@@ -41,20 +41,30 @@ from scipy.io import wavfile
 SR = 48000
 TARGET_LUFS = -20.0
 
-# (id, title, what to listen for, tool arguments)
+# (id, title, what to listen for, tool arguments[, per-side extra arguments])
+#
+# The optional fifth element adds arguments to one side only, for a control
+# the two builds spell differently or one of them lacks: before 2026-10-02
+# every pad had its own WIDTH parameter (`--param=root-width=1`), since then
+# one WIDTH macro (`--param=width=1`); a build without DETUNE plays the
+# designed detune, which is DETUNE 50%.
 ITEMS = [
     ("blend_mid", "Default patch, C3-E4 chord",
      "The whole instrument in its home register. Warmth, width, life.",
      ["--notes=48,55,60,64", "--hold=7", "--tail=3"]),
     ("root_chord", "Root solo, C3-E4, WIDTH 100%",
-     "Stereo image of the foundation pad: width, depth, does it still feel centred?",
-     ["--solo=root", "--notes=48,55,60,64", "--param=root-width=1", "--hold=7", "--tail=3"]),
+     "Stereo image of the foundation pad: width, depth, does it still feel centred? "
+     "(Since 2026-10-02 full WIDTH is 60% of Root's spread.)",
+     ["--solo=root", "--notes=48,55,60,64", "--hold=7", "--tail=3"],
+     {"baseline": ["--param=root-width=1"], "candidate": ["--param=width=1"]}),
     ("clearing_chord", "Clearing solo, C3-E4, WIDTH 100%",
      "Ensemble vs slow flanger. Is it still Clearing? Richer, or just different?",
-     ["--solo=clearing", "--notes=48,55,60,64", "--param=clearing-width=1", "--hold=7", "--tail=3"]),
+     ["--solo=clearing", "--notes=48,55,60,64", "--hold=7", "--tail=3"],
+     {"baseline": ["--param=clearing-width=1"], "candidate": ["--param=width=1"]}),
     ("expanse_chord", "Expanse solo, C4-E4-G4, WIDTH 100%",
      "Brightness and the shimmer's width. Airy, or too bright?",
-     ["--solo=expanse", "--notes=60,64,67", "--param=expanse-width=1", "--hold=7", "--tail=3"]),
+     ["--solo=expanse", "--notes=60,64,67", "--hold=7", "--tail=3"],
+     {"baseline": ["--param=expanse-width=1"], "candidate": ["--param=width=1"]}),
     ("bloom_chord", "Bloom solo, C3-E4 chord",
      "The tremolo in a chord: a musical pulse, or too obvious?",
      ["--solo=bloom", "--notes=48,55,60,64", "--hold=7", "--tail=3"]),
@@ -79,6 +89,24 @@ ITEMS = [
     ("preset_lagerfeuer", "Preset Lagerfeuer (the default sound)",
      "The first thing a user hears.",
      ["--preset=Lagerfeuer", "--notes=48,55,60,64", "--hold=7", "--tail=3"]),
+    # WIDTH and DETUNE macros (2026-10-02). Against a build from before that
+    # date the presets compare the same width on all four pads with the
+    # staggered profile; the DETUNE items compare an extreme with the
+    # designed detune.
+    ("preset_klarheit", "Preset Klarheit, WIDTH 50%",
+     "The profile's biggest change: Root now near the centre, the air still open. Clearer, or narrower?",
+     ["--preset=Klarheit", "--notes=48,55,60,64", "--hold=7", "--tail=3"]),
+    ("preset_sternenzelt", "Preset Sternenzelt, WIDTH 100%",
+     "Full width, with Root and Bloom held back by their profiles. Still vast?",
+     ["--preset=Sternenzelt", "--notes=48,55,60,64", "--hold=7", "--tail=4"]),
+    ("detune_tight", "Default patch, DETUNE 0% against the designed detune",
+     "Tighter and cleaner: still alive, or static and organ-like?",
+     ["--notes=48,55,60,64", "--hold=7", "--tail=3"],
+     {"candidate": ["--param=detune=0"]}),
+    ("detune_wide", "Default patch, DETUNE 100% against the designed detune",
+     "Wider and lusher: still in tune, or seasick? Listen to Clearing, the pad DETUNE moves least.",
+     ["--notes=48,55,60,64", "--hold=7", "--tail=3"],
+     {"candidate": ["--param=detune=1"]}),
 ]
 
 _K1 = ([1.53512485958697, -2.69169618940638, 1.19839281085285], [1.0, -1.69065929318241, 0.73248077421585])
@@ -253,9 +281,11 @@ def main():
     os.makedirs(args.out, exist_ok=True)
     items = []
     with tempfile.TemporaryDirectory() as tmp:
-        for item_id, title, hint, tool_args in chosen:
-            base = render(args.baseline, tool_args, args.seed)
-            cand = render(args.candidate, tool_args, args.seed)
+        for item in chosen:
+            item_id, title, hint, tool_args = item[:4]
+            side = item[4] if len(item) > 4 else {}
+            base = render(args.baseline, tool_args + side.get("baseline", []), args.seed)
+            cand = render(args.candidate, tool_args + side.get("candidate", []), args.seed)
             gb = 10 ** ((TARGET_LUFS - lufs(base)) / 20)
             gc = 10 ** ((TARGET_LUFS - lufs(cand)) / 20)
             base, cand = base * gb, cand * gc

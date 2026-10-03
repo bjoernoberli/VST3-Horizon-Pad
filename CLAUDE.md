@@ -84,14 +84,15 @@ cmake --build build-release --target HorizonPadSoundTool -j 8
 ctest --test-dir build-release --output-on-failure
 ```
 
-Seventeen tests (~37 s), `tools/tests/dsp_tests.py`, registered by CMake. They
+Nineteen tests (~55 s), `tools/tests/dsp_tests.py`, registered by CMake. They
 drive the real DSP through `HorizonPadSoundTool` rather than unit-testing
 classes: latency, seeded-reset determinism, the 36 sample-rate x block-size
 combinations, 60 s of silence, all 18 presets; regression guards, one per bug
 measurement has caught (`shimmer_octave_present`, `width_is_rate_invariant`,
 `voice_steal_declick`, `reverb_level_flat`); a presence test per defining
 feature (`root_sub_present`, `clearing_ensemble_present`,
-`bloom_tremolo_survives_chords`); and instrument-level contracts
+`bloom_tremolo_survives_chords`, `width_profile_staggered`,
+`detune_spreads_every_stack`); and instrument-level contracts
 (`keyboard_level_span`, `width_mono_safe_and_level_flat`, `sustain_pedal_holds`,
 `low_register_stays_musical`, `bass_is_mono`). **Add a regression test whenever a
 DSP defect is fixed, and show it failing on the build that has the defect**
@@ -104,7 +105,10 @@ battery, reverb decay, port-vs-prototype null test), `descriptors.py` (is it the
 sound we designed: layer grid, keyboard, mix pocket, stereo, movement, presets -
 four seeds per figure, `--save`/`--compare` against `docs/baselines/`) and
 `register.py` (roughness, pitch salience, harmonic content and low side energy
-per note, C1-C5 and low voicings). `tools/listening/make_session.py` renders a
+per note, C1-C5 and low voicings), and `translation.py` (playbook F.7 / rule 34:
+mono sum, phone speaker, -14 LUFS normalisation, AAC/MP3 round trip, stereo bass;
+baseline `docs/baselines/translation-v2.json`; uses the playbook's `dspkit` from
+`~/.claude/docs/dsp-kit`, plus `afconvert` and `lame`). `tools/listening/make_session.py` renders a
 blind, loudness-matched A/B/X page (baseline build vs candidate) for the
 listening passes the measurements cannot settle.
 
@@ -113,12 +117,35 @@ before 2026-09-26 - G5 was re-run, see `docs/g5-null-test.md`); the applied
 state is echoed under `activeParams`, and scripts should assert on it.
 `--pedal=down,up` sends the sustain pedal.
 
+**Real-time safety (rule 35).** `-DHORIZON_RTSAN=ON` builds the sound tool with
+RealtimeSanitizer; every `processBlock` then runs as a real-time context, and any
+allocation, lock or system call aborts with a stack trace. Needs Homebrew LLVM (Apple
+clang has no RTSan) and, with JUCE 8.0.4, two workarounds - the SDK's libc++ headers
+and a private JUCE copy without one deprecated constructor clang 23 rejects (playbook
+D.1.6):
+
+```bash
+SDK=$(xcrun --show-sdk-path)
+cp -R build-release/_deps/juce-src /tmp/juce-rtsan   # then delete the two-line
+#   template AudioPluginInstance (const short channelLayoutList[numLayouts][2]) constructor
+#   in modules/juce_audio_processors/processors/juce_AudioPluginInstance.h
+cmake -B build-rtsan -G Ninja -DCMAKE_BUILD_TYPE=RelWithDebInfo -DHORIZON_RTSAN=ON \
+  -DCMAKE_C_COMPILER=/opt/homebrew/opt/llvm/bin/clang -DCMAKE_CXX_COMPILER=/opt/homebrew/opt/llvm/bin/clang++ \
+  "-DCMAKE_CXX_FLAGS=-nostdinc++ -isystem $SDK/usr/include/c++/v1" -DFETCHCONTENT_SOURCE_DIR_JUCE=/tmp/juce-rtsan
+cmake --build build-rtsan --target HorizonPadSoundTool
+export RTSAN_OPTIONS=external_symbolizer_path=/opt/homebrew/opt/llvm/bin/llvm-symbolizer  # default symbolizer hangs
+HORIZON_RTSAN_SELFTEST=1 ./build-rtsan/HorizonPadSoundTool --notes=60 --hold=1   # must abort (proves the check is live)
+python3 tools/tests/dsp_tests.py --tool ./build-rtsan/HorizonPadSoundTool       # all 19 clean, 2026-10-03
+```
+
 ### CI
 
 `.github/workflows/build.yml`: builds VST3 on macOS (universal binary) +
-Windows (x64), packages an unsigned macOS `.pkg` and a Windows installer
-folder, zips both into one cross-platform release artifact, and runs the
-Steinberg validator non-blocking (`continue-on-error: true`).
+Windows (x64), packages an unsigned (ad-hoc signed) macOS `.pkg` and a Windows
+installer folder, zips both into one cross-platform release artifact, runs the
+DSP test suite, and runs the Steinberg validator as a **hard gate** (promoted from
+non-blocking on 2026-09-24). Not yet in CI (playbook D.4): pluginval, a sanitizer
+(RTSan) job, a pinned VST3 SDK commit for the validator build.
 
 ## Architecture
 
@@ -149,18 +176,24 @@ the repo root may hold additional design notes/references.
 
 `LayerBase.h` is the shared machinery all four layers inherit: fixed
 (non-user-editable) per-layer ADSR timings from the original Faust sound
-design, three global macros applied identically to every layer each block
-(`attackTimeScale`, `releaseTimeScale`, `brightness` — the last ramped
-per-sample via `smoothedBrightness` to avoid filter zipper noise), each
-layer's own stereo WIDTH (spreads each voice's detuned oscillators across the
+design, the global macros applied to every layer each block
+(`attackTimeScale`, `releaseTimeScale`, `brightness` — ramped per-sample via
+`smoothedBrightness` to avoid filter zipper noise — plus WIDTH and DETUNE),
+stereo WIDTH (one macro, turned into each layer's own width by its fixed
+`widthProfile()` - Expanse opens from 0%, Clearing 10%, Bloom 20%, Root 30% and
+only to 60%; the width spreads each voice's detuned oscillators across the
 field, constant-power, mirrored on odd voices; mono-safe and level-flat - it
-replaced a Haas tap on 2026-09-26), and the register helpers every layer uses:
+replaced a Haas tap on 2026-09-26 and four per-pad WIDTH knobs on 2026-10-02),
+DETUNE (`makeDetuneRamp()`/`driftDepth()`: scales each stack's static detune
+and baseline drift, 0.5x-2x with 50% bit-exact, eased out below C3; Root's saw
+edge and sub and the MOD wheel's drift are not scaled), and the register helpers every layer uses:
 `keyTrack` (asymmetric key tracking anchored at C4, the voicing note),
 `unisonFor` (partners and drift tighten below C3), smoothed-random `Drift`,
-`polyBlampTriangle`. `FxChain.h/.cpp` holds the shared reverb send: the side
-channel is high-passed at 140 Hz first (mono bass), then a one-pole split at
-160 Hz keeps the bass dry and only the band above is sent (20 ms pre-delay) and
-crossfaded equal-power.
+`polyBlampTriangle`. `FxChain.h/.cpp` holds the shared reverb send: a one-pole
+split at 160 Hz keeps the bass dry and only the band above is sent (20 ms
+pre-delay) and crossfaded equal-power; the side channel of the finished mix -
+dry and reverb return - is high-passed at 140 Hz, 24 dB/oct, **last** (mono bass,
+rule 26; it ran first until 2026-10-03, and the reverb return rebuilt stereo bass).
 
 ### Voice allocation
 
@@ -173,8 +206,8 @@ slot each block, so a chord stays coherent across all four layers.
 
 ### Parameters and thread-safety model
 
-Twelve host-automatable APVTS parameters (all 0–100%) in fixed order: 4
-volumes, 4 macros (Attack/Release/Filter/Reverb), 4 widths — see
+Ten host-automatable APVTS parameters (all 0–100%) in fixed order: 4
+volumes, 6 macros (Attack/Release/Filter/Reverb/Width/Detune, `MacroIndex`) — see
 `Source/presets/Presets.h` for the parameter IDs and README's Parameters
 table for the full semantics of each macro. All are smoothed
 (`juce::SmoothedValue`) somewhere on their path to audio.
@@ -185,7 +218,7 @@ table for the full semantics of each macro. All are smoothed
 - PITCH/MOD are performance controls (`Source/dsp/PerformanceState.h`), not
   host parameters — two atomics written by MIDI pitch-bend/CC1 or the
   on-screen wheel, read once per block. PITCH is spring-loaded; MOD holds.
-- A/B buffers (two full 12-parameter snapshots) stay in sync via an APVTS
+- A/B buffers (two full 10-parameter snapshots) stay in sync via an APVTS
   `Listener::parameterChanged()` callback, which can fire from any thread.
 - User presets (`UserPresetStore`, `UserPresets.xml`) are message-thread-only
   — created/read/deleted exclusively from GUI actions, so no extra sync is
@@ -200,7 +233,8 @@ Fixed 1080×748 window (`setResizable(false, false)`), pixel-accurate to a
 design handoff — every child paints its own precise layout rather than
 scaling a shared "design surface". `HorizonLookAndFeel` centralizes
 palette/typography/panel painters; other classes are one widget each
-(`PadKnob` = one layer's VOL/WIDTH pair, `MacrosPanel`, `WheelSlider` =
+(`PadKnob` = one layer's VOL knob, `MacrosPanel` = the six macros in three
+rows, `WheelSlider` =
 PITCH/MOD, `PresetBar`, `OutputMeter`, `FooterBar`, `TitleBanner`).
 
 ## Tier P process
@@ -229,7 +263,6 @@ permission, staying inside individual layer `.h`/`.cpp` files.
 
 ## DSP work
 
-Invariants load automatically for `Source/**` and `*.dsp`. For design, porting, measurement or review, use `/dsp-playbook`. For a specific defect, `/dsp-diagnose`. The playbook is user-level, not in this repo: core card `~/.claude/docs/dsp-playbook-core.md` (read whole), reference `~/.claude/docs/dsp-sound-design-playbook.md` (grep it, never read it whole).
+Invariants load automatically for `Source/**` and `*.dsp`. For design, porting, measurement, testing, review or release, use `/dsp-playbook`; for a specific defect, `/dsp-diagnose`. The playbook is user-level, not in this repo, in `~/.claude/docs/`: the core card `dsp-playbook-core.md` (read whole; section 0 maps tasks to recipes), and the reference split into `dsp-selection.md` (S, algorithm choice), `dsp-foundations.md` (F), `dsp-instruments.md` (I), `dsp-effects.md` (E), `dsp-control.md` (C), `dsp-analysis.md` (A) and `dsp-development.md` (D: real-time safety, performance, testing, CI, host contract, licensing, agent workflow, task recipes) - grep them, never read them whole. `dsp-sound-design-playbook.md` is the index. `~/.claude/docs/dsp-kit/` holds the tested measurement library (`dspkit.py`), the harness contract new products follow, a test scaffold and the document templates.
 
-The playbook is at v2.2 (2026-09-26): 28 rules, including range-and-chords verification, sustain pedal, mono bass, power-complementary splits and a verified harness (24-28), plus briefs by musical role (2.6-2.9) and register design (1.4). Branch `sound-design-v2` is the sound-design pass that brought this repo in line with them; see `docs/dsp-review-2026-09-26.md` (the findings) and `docs/sound-design-v2.md` (what changed, measured, and the listening list still owed).
-
+The playbook is at v3.2 (2026-10-02): 37 rules tagged by track. Horizon Pad is an instrument (track I) that also owns control (C: MIDI, pedal, wheels), processing (E: the shimmer, ensemble, reverb), mix and output (F.5-F.6). Its v2 sound-design pass is the playbook's instrument worked example (I.10); see `docs/dsp-review-2026-09-26.md` (findings) and `docs/sound-design-v2.md` (changes, measurements, listening list). Not yet audited against this repo: event timing (rule 29 - JUCE applies automation per block), control mappings and note hygiene (30), nonlinear models (33 - the output limiter and tanh), the translation battery (34 - not yet run), real-time safety verified by RTSan or pluginval `--rtcheck` (35), frozen IDs with a versioned state (36 - **not yet applicable**: Horizon Pad is unreleased and testing-only, so parameters, state and presets change freely with no migration or version flags until the owner announces a release; at that point the state gains a version and golden state files, D.5.3), and worst-case block time (37 - the 5.0% CPU figure in the G7 notes is an average). Rule 32 (bypass) does not apply to an instrument.

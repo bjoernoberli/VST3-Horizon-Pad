@@ -172,6 +172,13 @@ the owner's call because it is a character decision, not a level one.
 
 ---
 
+### Owner listening, 2026-10-03
+
+The owner listened to Sternenzelt on the `sound-design-v2` branch (with the WIDTH
+macro's staggered profile) and decided: **"Sternenzelt is ok as is."** No
+rebalance into the loudness match; the exception stays accepted, now on the
+owner's ear rather than on the calculation. The trigger above still applies.
+
 ## EX-003 - Expanse aliases at the top two octaves
 
 - **Date:** 2026-09-24

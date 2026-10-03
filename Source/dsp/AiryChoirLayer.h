@@ -65,6 +65,10 @@ protected:
     float sustainLevel() const noexcept override   { return 0.4f; }
     float releaseSeconds() const noexcept override { return 1.8f; }
 
+    /** The air: the first pad to open and the widest, its width following
+        the WIDTH knob one to one. */
+    WidthProfile widthProfile() const noexcept override { return { 0.0f, 1.0f }; }
+
 private:
     static constexpr int kNumOscs = 3;
     static constexpr float kOscDetuneFraction[3] { 0.0002f, -0.0003f, 0.0005f }; // det * 0.01 from the Faust source

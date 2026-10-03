@@ -11,8 +11,19 @@ static constexpr int kNumLayers = 4;
 /** Simple polyphony cap. Ambient pads do not need a huge voice count. */
 static constexpr int kMaxVoices = 8;
 
-/** Number of host-automatable global macro parameters (Attack/Filter/Width/Reverb). */
-static constexpr int kNumGlobalParams = 4;
+/** Number of host-automatable global macros: Attack, Release, Filter, Reverb, Width, Detune. */
+static constexpr int kNumGlobalParams = 6;
+
+/** Index of each macro in every macros array (presets, A/B buffers, parameter order). */
+enum MacroIndex
+{
+    attackMacroIndex = 0,
+    releaseMacroIndex,
+    filterMacroIndex,
+    reverbMacroIndex,
+    widthMacroIndex,
+    detuneMacroIndex
+};
 
 /**
     Index of each layer, used everywhere (DSP, GUI, presets). Order matches the

@@ -18,7 +18,8 @@ namespace horizon
 
     Stereo width used to be created right here too (a shared WIDTH macro
     driving a Haas-style delay split between channels), but each of the four
-    layers now has its own WIDTH knob instead (see LayerBase::setWidth()) -
+    layers now builds its own stereo image from the WIDTH macro, through its
+    own width profile (see LayerBase::setWidth()) -
     so by the time a buffer reaches this stage it may already carry real,
     distinct left/right content, and this stage's job is only to preserve
     that image while adding the shared reverb on top, not to rebuild it from
@@ -81,9 +82,11 @@ private:
     // this constant as miscalibrated during that audit.
     static constexpr float kWetCalibrationGain = 0.48f;
 
-    /** Mono bass: the side signal (L-R)/2 is high-passed here before
-        anything else, so everything below ~kMonoBassHz is mono whatever the
-        layers' WIDTH does above it. WIDTH spreads whole oscillators, which
+    /** Mono bass: the side signal (L-R)/2 of the finished mix - dry layers
+        and reverb return - is high-passed last, so everything below
+        ~kMonoBassHz is mono whatever the layers' WIDTH or the reverb does
+        above it. (It ran first until 2026-10-03; the reverb's decorrelated
+        return then rebuilt a side channel in the bass, translation battery.) WIDTH spreads whole oscillators, which
         put a C2 note's 65 Hz fundamental into the side channel (6-10 dB more
         low side than v1, tools/measure/register.py); a PA sums the low end
         to mono, and a stereo sub reads as phasey and loses weight when it

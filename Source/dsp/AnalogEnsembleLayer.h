@@ -50,6 +50,10 @@ protected:
     float sustainLevel() const noexcept override   { return 0.8f; }
     float releaseSeconds() const noexcept override { return 2.2f; }
 
+    /** The ensemble is wide by nature (its taps are stereo even at WIDTH 0):
+        it opens early, from WIDTH 10%, to its full designed spread. */
+    WidthProfile widthProfile() const noexcept override { return { 0.10f, 1.0f }; }
+
 private:
     static constexpr int kNumOscs = 3;
     static constexpr float kOscDetuneFraction[3] { 0.0003f, -0.0004f, 0.0009f }; // det * 0.01 from the Faust source

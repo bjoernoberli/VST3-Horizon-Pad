@@ -101,7 +101,7 @@ The fixes, all unchanged at and above C3/C4 so the voiced sound stays put:
 | Bass unison: partner oscillators fade to 35% and drift halves from C3 down to A1, power-normalised | `LayerBase::unisonFor` |
 | Clearing's ensemble only choruses the band above 200 Hz (one-pole, power-complementary split); ensemble made power-neutral (taps / sqrt 3) and the level moved into `kLayerLevel` | `AnalogEnsembleLayer` |
 | Expanse register pinning: below C4 its stack stays near C5, crossfading between the two nearest octaves of the played pitch class (the organ-mixture "break back"); level matched to v1 at C4 | `AiryChoirLayer` |
-| Mono bass: side channel high-passed at 140 Hz, 24 dB/oct, before the reverb split | `FxChain` |
+| Mono bass: side channel high-passed at 140 Hz, 24 dB/oct - since 2026-10-03 at the end of the chain, after the reverb return (before the split, the reverb rebuilt stereo bass: -5.3 dB side/mid) | `FxChain` |
 
 Measured, `main` -> v2 (C1, C2 single notes | C2 open fifth, C2 close triad):
 
@@ -172,10 +172,14 @@ Bloom 13% -> 43%, the others within 2 points. Presets within 0.1-0.34 LU of main
 - **Existing projects will sound different.** Playbook 5.7 says a sound-changing
   fix keeps the old path behind a version flag once a product is released. If
   v1 is in users' hands, v2 needs that flag; if not, v2 simply becomes the sound.
+  *Answered 2026-10-02 (owner): not used beyond testing, so no flag - see
+  `brief.md` A-006.*
 - **Root's detune** is +7/-6 cents in C++ and +1.2/-1.0 in the prototype. Not
   changed - character call.
 - The brief's `core_controls` describes WIDTH as a "Haas spread"; v2 changes the
   mechanism (proposed amendment, not made: `brief.md` is owner-confirmed).
+  *Recorded in `brief.md` A-006 (2026-10-02), together with WIDTH becoming one
+  macro.*
 
 ## Listening list for the A/B
 

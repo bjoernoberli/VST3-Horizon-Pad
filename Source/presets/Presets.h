@@ -7,7 +7,7 @@
 namespace horizon
 {
 
-/** Canonical parameter IDs for the twelve host-automatable parameters. */
+/** Canonical parameter IDs for the ten host-automatable parameters. */
 namespace ParamID
 {
     // Pad volumes (ROOT/CLEARING/EXPANSE/BLOOM in the GUI), LayerIndex order.
@@ -16,28 +16,26 @@ namespace ParamID
     static constexpr const char* expanseVolume  = "expanseVolume";
     static constexpr const char* bloomVolume    = "bloomVolume";
 
-    // Per-layer stereo width, LayerIndex order - each pad's own WIDTH knob
-    // (spreads that pad's oscillators; see LayerBase), replacing what used to
-    // be one shared WIDTH macro across the whole mix.
-    static constexpr const char* rootWidth     = "rootWidth";
-    static constexpr const char* clearingWidth = "clearingWidth";
-    static constexpr const char* expanseWidth  = "expanseWidth";
-    static constexpr const char* bloomWidth    = "bloomWidth";
-
-    // Global macros.
+    // Global macros, MacroIndex order.
     static constexpr const char* attackMacro  = "attackMacro";
     static constexpr const char* releaseMacro = "releaseMacro";
     static constexpr const char* filterMacro  = "filterMacro";
     static constexpr const char* reverbMacro  = "reverbMacro";
+
+    // WIDTH acts on every pad through that pad's own fixed width profile
+    // (LayerBase::widthProfile()), DETUNE scales every pad's designed
+    // unison detune (LayerBase::setDetune()).
+    static constexpr const char* widthMacro   = "widthMacro";
+    static constexpr const char* detuneMacro  = "detuneMacro";
 }
 
 /**
-    A complete factory program: the four pad volumes, the four per-layer
-    widths, and the four macros, all 0..1 (shown as 0..100% in the GUI).
-    There is no per-layer tone block beyond width - each pad's character is
-    otherwise fixed by its own validated Faust-derived DSP, so a preset is
-    just a point in this 12-dimensional blend/width/macro space (matching the
-    product's "twelve knobs" GUI exactly, one per automatable parameter).
+    A complete factory program: the four pad volumes and the six macros, all
+    0..1 (shown as 0..100% in the GUI). There is no per-layer tone block -
+    each pad's character is fixed by its own validated Faust-derived DSP, and
+    every macro acts on all four pads at once - so a preset is just a point
+    in this 10-dimensional blend/macro space (matching the GUI exactly, one
+    knob per automatable parameter).
 */
 struct Preset
 {
@@ -52,10 +50,7 @@ struct Preset
     /** Root, Clearing, Expanse, Bloom. 0..1. */
     std::array<float, (size_t) kNumLayers> volumes;
 
-    /** Root, Clearing, Expanse, Bloom. 0..1. */
-    std::array<float, (size_t) kNumLayers> widths;
-
-    /** Attack, Release, Filter, Reverb. 0..1. */
+    /** Attack, Release, Filter, Reverb, Width, Detune (MacroIndex). 0..1. */
     std::array<float, (size_t) kNumGlobalParams> macros;
 };
 
