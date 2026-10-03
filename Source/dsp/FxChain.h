@@ -18,7 +18,8 @@ namespace horizon
 
     Stereo width used to be created right here too (a shared WIDTH macro
     driving a Haas-style delay split between channels), but each of the four
-    layers now has its own WIDTH knob instead (see LayerBase::setWidth()) -
+    layers now builds its own stereo image from the WIDTH macro, through its
+    own width profile (see LayerBase::setWidth()) -
     so by the time a buffer reaches this stage it may already carry real,
     distinct left/right content, and this stage's job is only to preserve
     that image while adding the shared reverb on top, not to rebuild it from

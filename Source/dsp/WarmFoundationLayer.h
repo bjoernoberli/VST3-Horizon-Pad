@@ -33,6 +33,12 @@ protected:
     float sustainLevel() const noexcept override   { return 0.75f; }
     float releaseSeconds() const noexcept override { return 2.4f; }
 
+    /** The foundation opens last and least: it stays centred until WIDTH 30%
+        and reaches 60% of its designed spread at full WIDTH. It carries the
+        low end under a centred vocal and guitar, and below 140 Hz the output
+        is mono anyway (FxChain), so what width it has is upper partials. */
+    WidthProfile widthProfile() const noexcept override { return { 0.30f, 0.60f }; }
+
 private:
     // Oscillator layout: 0..2 = detuned triangle stack, 3 = saw edge, 4 = sub.
     static constexpr int kNumOscs = 5;

@@ -53,7 +53,11 @@ void WarmFoundationLayer::renderVoice (int voiceIndex, juce::AudioBuffer<float>&
     const auto invSr = 1.0f / (float) sampleRate;
     const auto baseFreq = bentFrequency (v.frequency);
     const auto unison = unisonFor (baseFreq, 3);
-    const auto driftDepth = (0.004f + modAmount * 0.010f) * unison.driftScale; // pitch-ratio depth, matches drift() in the Faust source
+    // Pitch-ratio drift depth, matching drift() in the Faust source. The saw
+    // edge and the sub are single oscillators, not unison partners, so
+    // DETUNE leaves their drift alone; the triangle stack's scales with it.
+    const auto edgeDriftDepth = driftDepth (1.0f) * unison.driftScale;
+    auto detune = makeDetuneRamp (baseFreq);
     const auto level = 0.20f * v.velocity;
     const auto tracking = keyTrack (baseFreq, kCutoffTrackingBelowC4, kCutoffTrackingAboveC4);
 
@@ -68,9 +72,11 @@ void WarmFoundationLayer::renderVoice (int voiceIndex, juce::AudioBuffer<float>&
     for (int i = 0; i < 3; ++i)
         pan[(size_t) i] = makePanRamp (kOscSpread[i], voiceIndex);
 
-    std::array<float, 3> detuneRatio;
+    // Each detune as a ratio offset (ratio - 1), so DETUNE scales it as
+    // 1 + offset * detune: at detune 1 that is the designed ratio exactly.
+    std::array<float, 3> detuneOffset;
     for (int i = 0; i < 3; ++i)
-        detuneRatio[(size_t) i] = std::pow (2.0f, kOscDetuneCents[i] / 1200.0f);
+        detuneOffset[(size_t) i] = std::pow (2.0f, kOscDetuneCents[i] / 1200.0f) - 1.0f;
 
     for (int n = 0; n < numSamples; ++n)
     {
@@ -78,10 +84,11 @@ void WarmFoundationLayer::renderVoice (int voiceIndex, juce::AudioBuffer<float>&
         // Voice-steal declick ramp; 1.0 unless this slot is being taken over.
         const auto stealGain = nextStealGain (v);
         const auto brightness = effectiveBrightness (voiceIndex, n);
+        const auto stackDriftDepth = driftDepth (detune.value) * unison.driftScale;
 
-        auto advance = [&] (int idx, float freqHz) noexcept
+        auto advance = [&] (int idx, float freqHz, float depth) noexcept
         {
-            const auto drift = vs.drift[(size_t) idx].next (rng, kOscDriftRateHz[idx], sampleRate) * driftDepth;
+            const auto drift = vs.drift[(size_t) idx].next (rng, kOscDriftRateHz[idx], sampleRate) * depth;
             const auto inc = juce::jlimit (0.0f, 0.49f, freqHz * (1.0f + drift) * invSr);
             vs.phase[(size_t) idx] = wrapPhase (vs.phase[(size_t) idx] + inc);
             return inc;
@@ -92,7 +99,7 @@ void WarmFoundationLayer::renderVoice (int voiceIndex, juce::AudioBuffer<float>&
 
         for (int i = 0; i < 3; ++i)
         {
-            const auto inc = advance (i, baseFreq * detuneRatio[(size_t) i]);
+            const auto inc = advance (i, baseFreq * (1.0f + detuneOffset[(size_t) i] * detune.value), stackDriftDepth);
             const auto tri = polyBlampTriangle (vs.phase[(size_t) i], inc) * (i == 0 ? 1.0f : unison.partnerGain);
             auto& p = pan[(size_t) i];
             stackL += tri * p.left;
@@ -101,10 +108,11 @@ void WarmFoundationLayer::renderVoice (int voiceIndex, juce::AudioBuffer<float>&
         }
 
         // Saw edge and sub stay centred: the sub is bass, and bass is mono.
-        const auto sawInc = advance (3, baseFreq);
+        const auto sawInc = advance (3, baseFreq, edgeDriftDepth);
         const auto sawEdge = polyBlepSaw (vs.phase[3], sawInc) * 0.15f;
 
-        const auto subInc = advance (4, subHz);
+        const auto subInc = advance (4, subHz, edgeDriftDepth);
+        detune.advance();
         const auto sub = polyBlampTriangle (vs.phase[4], subInc) * subGain;
 
         const auto centre = sawEdge + sub;

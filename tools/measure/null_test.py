@@ -19,7 +19,7 @@ deliberate rather than accidental:
 So this runs playbook 6.1's other form for G5: characterise the difference by
 band, and declare what is intentional. The comparison is per LAYER and dry -
 oscillators, filter, envelope - because that is the part that was ported
-structurally. The master stage was redesigned outright (per-layer WIDTH, an
+structurally. The master stage was redesigned outright (stereo WIDTH, an
 equal-power reverb crossfade, a limiter) and is out of scope here; see
 docs/g1-algorithm.md.
 
@@ -74,8 +74,7 @@ def main():
         subprocess.run([CPP, f"--solo={solo}", f"--notes={NOTE_C4}", "--seed=11",
                         "--velocity=1.0", "--param=reverb=0", "--param=attack=0.5",
                         "--param=release=0.5", "--param=filter=0.5",
-                        "--param=root-width=0", "--param=clearing-width=0",
-                        "--param=expanse-width=0", "--param=bloom-width=0",
+                        "--param=width=0",
                         "--hold=4", "--tail=2", "--sample-rate=48000",
                         f"--out={cf}"], check=True, capture_output=True)
         C, _ = read(cf)

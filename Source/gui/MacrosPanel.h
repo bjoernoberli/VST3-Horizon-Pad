@@ -1,6 +1,7 @@
 #pragma once
 
 #include "HorizonLookAndFeel.h"
+#include "../dsp/HorizonTypes.h"
 
 class HorizonPadAudioProcessor;
 
@@ -8,11 +9,10 @@ namespace horizon::ui
 {
 
 /**
-    The MACROS block: four small knobs in a 2x2 grid - ATTACK/RELEASE on top,
-    FILTER/REVERB below - all genuine host-automatable parameters, all acting
-    globally across the four pads (see LayerBase and FxChain for what each one
-    actually does to the DSP). Stereo width lives on each pad's own PadKnob
-    card instead, not here - see PadKnob.h.
+    The MACROS block: six small knobs in three rows of two - ATTACK/RELEASE,
+    FILTER/REVERB, WIDTH/DETUNE - all genuine host-automatable parameters,
+    all acting globally across the four pads (see LayerBase and FxChain for
+    what each one actually does to the DSP).
 */
 class MacrosPanel final : public juce::Component
 {
@@ -34,7 +34,7 @@ private:
     void setUpKnob (Knob& knob, const juce::String& caption, const juce::String& tooltip, const char* paramId,
                     juce::Colour accent, HorizonPadAudioProcessor& processor);
 
-    std::array<Knob, 4> knobs;
+    std::array<Knob, (size_t) kNumGlobalParams> knobs;
 
     JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR (MacrosPanel)
 };

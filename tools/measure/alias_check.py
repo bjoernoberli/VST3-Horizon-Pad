@@ -35,8 +35,7 @@ def render(tool, layer, note, sr, seed, outpath, bright=1.0):
     # aliasing, and either one swamps the measurement.
     cmd = [tool, f"--solo={layer}", f"--notes={note}", f"--sample-rate={sr}",
            f"--seed={seed}", f"--param=filter={bright}", "--param=reverb=0",
-           "--param=root-width=0", "--param=clearing-width=0",
-           "--param=expanse-width=0", "--param=bloom-width=0",
+           "--param=width=0",
            "--hold=3", "--tail=0.5", f"--out={outpath}", "--block=512"]
     r = subprocess.run(cmd, capture_output=True, text=True)
     if r.returncode != 0:

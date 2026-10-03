@@ -9,16 +9,20 @@ namespace horizon
     Reading the numbers:
       volumes = { Root (Warm Foundation), Clearing (Analog Ensemble),
                   Expanse (Airy Choir), Bloom (Motion Pad) }
-      widths  = { Root, Clearing, Expanse, Bloom }
-      macros  = { Attack, Release, Filter, Reverb }
+      macros  = { Attack, Release, Filter, Reverb, Width, Detune }
 
     Values are the starting points worked out for the VST3 handoff, matching
     each preset's name against the four pads' existing character - a first
-    pass for ear-tuning, not a final mix. widths are seeded from what used to
-    be each preset's one shared WIDTH macro (applied uniformly to all four
-    layers here, since that's exactly what the old shared macro did to the
-    mix), and release mirrors attack - both are starting points for a real
-    sound-design pass, not deliberately tuned per layer yet.
+    pass for ear-tuning, not a final mix. Release mirrors attack - a starting
+    point for a real sound-design pass, not deliberately tuned yet.
+
+    WIDTH (2026-10-02) is each preset's former Expanse width. Expanse is the
+    pad whose width profile is the identity, so the widest pad sits exactly
+    where it did and the profiles narrow the other three (see
+    LayerBase::widthProfile()). Until then every preset gave all four pads the
+    same width, so the shape across the pads never changed between presets;
+    now it changes with the knob. DETUNE is 0.5 everywhere, the designed
+    detune, so the bank sounds as voiced until someone tunes it by ear.
 */
 
 static const std::vector<Preset>& buildPresets()
@@ -33,8 +37,7 @@ static const std::vector<Preset>& buildPresets()
             "Lagerfeuer",
             "Warm, close and grounded - the campfire pad.",
             { 0.477f, 0.191f, 0.096f, 0.159f },
-            { 0.40f, 0.40f, 0.40f, 0.40f },
-            { 0.40f, 0.40f, 0.30f, 0.20f }
+            { 0.40f, 0.40f, 0.30f, 0.20f, 0.40f, 0.50f }
         },
 
         // ------------------------------------------------------------------
@@ -51,8 +54,7 @@ static const std::vector<Preset>& buildPresets()
             juce::String (juce::CharPointer_UTF8 ("Alpengl\xc3\xbchen")),
             "Warm light spreading wide across the peaks.",
             { 0.307f, 0.443f, 0.375f, 0.239f },
-            { 0.80f, 0.80f, 0.80f, 0.80f },
-            { 0.60f, 0.60f, 0.65f, 0.45f }
+            { 0.60f, 0.60f, 0.65f, 0.45f, 0.80f, 0.50f }
         },
 
         // ------------------------------------------------------------------
@@ -63,8 +65,7 @@ static const std::vector<Preset>& buildPresets()
             "Morgentau",
             "Fresh and delicate, open but soft.",
             { 0.227f, 0.302f, 0.529f, 0.415f },
-            { 0.70f, 0.70f, 0.70f, 0.70f },
-            { 0.50f, 0.50f, 0.55f, 0.55f }
+            { 0.50f, 0.50f, 0.55f, 0.55f, 0.70f, 0.50f }
         },
 
         // ------------------------------------------------------------------
@@ -75,8 +76,7 @@ static const std::vector<Preset>& buildPresets()
             "Sternenzelt",
             "Vast and celestial - Expanse fills the whole sky.",
             { 0.167f, 0.167f, 1.000f, 0.278f },
-            { 1.00f, 1.00f, 1.00f, 1.00f },
-            { 0.75f, 0.75f, 0.80f, 0.75f }
+            { 0.75f, 0.75f, 0.80f, 0.75f, 1.00f, 0.50f }
         },
 
         // ------------------------------------------------------------------
@@ -87,8 +87,7 @@ static const std::vector<Preset>& buildPresets()
             "Talwind",
             "Movement and breeze - Bloom leads the way.",
             { 0.252f, 0.252f, 0.252f, 0.472f },
-            { 0.85f, 0.85f, 0.85f, 0.85f },
-            { 0.30f, 0.30f, 0.50f, 0.35f }
+            { 0.30f, 0.30f, 0.50f, 0.35f, 0.85f, 0.50f }
         },
 
         // ==================================================================
@@ -113,8 +112,7 @@ static const std::vector<Preset>& buildPresets()
             "Mitternachtsblau",
             "A deep midnight drone, barely lit.",
             { 0.538f, 0.236f, 0.203f, 0.101f },
-            { 0.45f, 0.45f, 0.50f, 0.40f },
-            { 0.80f, 0.85f, 0.12f, 0.40f }
+            { 0.80f, 0.85f, 0.12f, 0.40f, 0.50f, 0.50f }
         },
 
         // ------------------------------------------------------------------
@@ -124,8 +122,7 @@ static const std::vector<Preset>& buildPresets()
             "Bergecho",
             "A vast mountain echo - huge, cinematic space.",
             { 0.349f, 0.317f, 0.476f, 0.285f },
-            { 1.00f, 1.00f, 1.00f, 0.90f },
-            { 0.70f, 0.80f, 0.55f, 0.80f }
+            { 0.70f, 0.80f, 0.55f, 0.80f, 1.00f, 0.50f }
         },
 
         // ------------------------------------------------------------------
@@ -135,8 +132,7 @@ static const std::vector<Preset>& buildPresets()
             "Steinerne Ruhe",
             "Stillness carved in stone - minimal, slow and sparse.",
             { 0.504f, 0.289f, 0.289f, 0.215f },
-            { 0.40f, 0.40f, 0.40f, 0.35f },
-            { 0.85f, 0.85f, 0.30f, 0.35f }
+            { 0.85f, 0.85f, 0.30f, 0.35f, 0.40f, 0.50f }
         },
 
         // ------------------------------------------------------------------
@@ -146,8 +142,7 @@ static const std::vector<Preset>& buildPresets()
             "Goldstaub",
             "Golden dust catching the light - bright and airy.",
             { 0.225f, 0.270f, 0.765f, 0.404f },
-            { 0.85f, 0.85f, 0.95f, 0.75f },
-            { 0.45f, 0.50f, 0.80f, 0.65f }
+            { 0.45f, 0.50f, 0.80f, 0.65f, 0.95f, 0.50f }
         },
 
         // ------------------------------------------------------------------
@@ -157,8 +152,7 @@ static const std::vector<Preset>& buildPresets()
             "Tiefensog",
             "A deep pull from below - sub-heavy and dark.",
             { 0.528f, 0.217f, 0.093f, 0.125f },
-            { 0.30f, 0.30f, 0.30f, 0.30f },
-            { 0.50f, 0.60f, 0.15f, 0.20f }
+            { 0.50f, 0.60f, 0.15f, 0.20f, 0.30f, 0.50f }
         },
 
         // ------------------------------------------------------------------
@@ -168,8 +162,7 @@ static const std::vector<Preset>& buildPresets()
             "Lichtnebel",
             "Soft, bright fog - gentle and balanced.",
             { 0.339f, 0.339f, 0.378f, 0.302f },
-            { 0.65f, 0.65f, 0.65f, 0.60f },
-            { 0.45f, 0.50f, 0.55f, 0.45f }
+            { 0.45f, 0.50f, 0.55f, 0.45f, 0.65f, 0.50f }
         },
 
         // ------------------------------------------------------------------
@@ -179,8 +172,7 @@ static const std::vector<Preset>& buildPresets()
             "Sturmfront",
             "A dramatic storm front rolling in - big and wide.",
             { 0.318f, 0.318f, 0.291f, 0.344f },
-            { 0.95f, 0.95f, 0.90f, 1.00f },
-            { 0.30f, 0.55f, 0.60f, 0.55f }
+            { 0.30f, 0.55f, 0.60f, 0.55f, 0.90f, 0.50f }
         },
 
         // ------------------------------------------------------------------
@@ -192,8 +184,7 @@ static const std::vector<Preset>& buildPresets()
             juce::String (juce::CharPointer_UTF8 ("D\xc3\xa4mmerlicht")),
             "Warm dusk light, gently settling.",
             { 0.394f, 0.361f, 0.229f, 0.197f },
-            { 0.55f, 0.55f, 0.55f, 0.50f },
-            { 0.55f, 0.60f, 0.40f, 0.40f }
+            { 0.55f, 0.60f, 0.40f, 0.40f, 0.55f, 0.50f }
         },
 
         // ------------------------------------------------------------------
@@ -203,8 +194,7 @@ static const std::vector<Preset>& buildPresets()
             "Frostklang",
             "Cold, bright and sharp - a frozen ring.",
             { 0.287f, 0.287f, 0.670f, 0.334f },
-            { 0.55f, 0.55f, 0.60f, 0.50f },
-            { 0.25f, 0.35f, 0.85f, 0.35f }
+            { 0.25f, 0.35f, 0.85f, 0.35f, 0.60f, 0.50f }
         },
 
         // ------------------------------------------------------------------
@@ -214,8 +204,7 @@ static const std::vector<Preset>& buildPresets()
             "Kupferglanz",
             "Warm copper shine - mid-bright and present.",
             { 0.298f, 0.462f, 0.265f, 0.198f },
-            { 0.60f, 0.60f, 0.60f, 0.55f },
-            { 0.40f, 0.45f, 0.55f, 0.35f }
+            { 0.40f, 0.45f, 0.55f, 0.35f, 0.60f, 0.50f }
         },
 
         // ------------------------------------------------------------------
@@ -225,8 +214,7 @@ static const std::vector<Preset>& buildPresets()
             "Sternenstaub",
             "Shimmering stardust - restless and bright.",
             { 0.230f, 0.230f, 0.537f, 0.460f },
-            { 0.85f, 0.85f, 0.90f, 0.90f },
-            { 0.35f, 0.40f, 0.70f, 0.60f }
+            { 0.35f, 0.40f, 0.70f, 0.60f, 0.90f, 0.50f }
         },
 
         // ------------------------------------------------------------------
@@ -236,8 +224,7 @@ static const std::vector<Preset>& buildPresets()
             "Ruhepuls",
             "A slow resting pulse, with subtle motion underneath.",
             { 0.387f, 0.231f, 0.194f, 0.426f },
-            { 0.50f, 0.50f, 0.50f, 0.60f },
-            { 0.60f, 0.65f, 0.30f, 0.35f }
+            { 0.60f, 0.65f, 0.30f, 0.35f, 0.50f, 0.50f }
         },
 
         // ------------------------------------------------------------------
@@ -247,8 +234,7 @@ static const std::vector<Preset>& buildPresets()
             "Klarheit",
             "Clear, present and simple - a mix-friendly starting point.",
             { 0.383f, 0.313f, 0.244f, 0.209f },
-            { 0.50f, 0.50f, 0.50f, 0.50f },
-            { 0.35f, 0.40f, 0.55f, 0.25f }
+            { 0.35f, 0.40f, 0.55f, 0.25f, 0.50f, 0.50f }
         }
     };
 

@@ -95,23 +95,18 @@ namespace Palette
         juce::Colour (0xffed76b3)    // 4. Bloom (Motion Pad)         - pink,   "life blooms"
     };
 
-    // Macro accents: Attack, Release, Filter, Reverb - taking the design's
+    // Macro accents, in MacroIndex order. The first four take the design's
     // four macro-slot colours in order (its fourth slot is labelled DRIVE
-    // there; RELEASE occupies its old WIDTH slot's colour instead, since
-    // WIDTH moved to a per-layer knob on each pad - see FxChain's doc
-    // comment for why WIDTH left the shared macros in the first place).
+    // there). WIDTH keeps the neutral tan it had as each pad's own knob, and
+    // DETUNE gets a violet no layer or macro uses.
     const juce::Colour macroAccents[] {
         juce::Colour (0xfff5ae39),   // Attack  - gold
         juce::Colour (0xffed76b3),   // Release - pink
         juce::Colour (0xff2fb5d8),   // Filter  - blue
-        juce::Colour (0xff5bbd74)    // Reverb  - green
+        juce::Colour (0xff5bbd74),   // Reverb  - green
+        wordmarkGoldEnd,             // Width   - tan
+        juce::Colour (0xffa98bf0)    // Detune  - violet
     };
-
-    // Each pad's own WIDTH knob (see LayerBase::setWidth()) shares this one
-    // neutral tan accent across all four layers - distinct from every layer
-    // accent and macro accent, so it reads as "the same control" wherever it
-    // appears rather than clashing with e.g. Bloom's pink layer accent.
-    const juce::Colour widthAccent = wordmarkGoldEnd;
 
     // Pitch / mod wheels share one neutral performance-control accent.
     const juce::Colour wheelAccent   { 0xfff5ae39 };
@@ -226,22 +221,31 @@ ColumnSlots computeColumnSlots (juce::Rectangle<int> cardBounds);
 void drawColumnCard (juce::Graphics& g, juce::Rectangle<float> bounds);
 
 /**
-    The shared "primary control, then a secondary one below a divider" split
-    used by both PadKnob (VOL over WIDTH) and MacrosPanel (ATTACK/RELEASE
-    over FILTER/REVERB), so the two card types line up at exactly the same
-    heights across the grid row: VOL sits level with ATTACK/RELEASE, and
-    WIDTH sits level with FILTER/REVERB, both across a shared divider line.
-    Takes a card's full control area (control slot + value slot combined,
-    since neither card type uses the shared row-aligned value slot - each
-    control has its own value right beneath it instead).
+    One labelled control with its value beneath it: label, knob, value.
+    Both PadKnob (VOL, one per card) and MacrosPanel (three rows of two) are
+    built from it. Takes a card's full control area (control slot + value
+    slot combined, since neither card type uses the shared row-aligned value
+    slot - each control has its own value right beneath it instead).
 */
-struct TwoTierLayout
+struct ControlLayout
 {
-    juce::Rectangle<int> primaryLabel, primaryControl, primaryValue;
-    int dividerY = 0;
-    juce::Rectangle<int> secondaryLabel, secondaryControl, secondaryValue;
+    juce::Rectangle<int> label, control, value;
 };
 
-TwoTierLayout computeTwoTierLayout (juce::Rectangle<int> area);
+/** PadKnob's single VOL group (14px label, 78px knob, 22px value), centred
+    vertically in `area` now that the pad cards have no second knob. */
+ControlLayout computePadControlLayout (juce::Rectangle<int> area);
+
+/** MacrosPanel's three equal rows (ATTACK/RELEASE, FILTER/REVERB,
+    WIDTH/DETUNE), each 11px label, knob, 14px value, with a divider line
+    between rows at `dividerYs`. Each row's rectangles span both columns. */
+struct MacroGridLayout
+{
+    std::array<ControlLayout, 3> rows;
+    std::array<int, 2> dividerYs {};
+    int knobSize = 0;
+};
+
+MacroGridLayout computeMacroGridLayout (juce::Rectangle<int> area);
 
 } // namespace horizon::ui

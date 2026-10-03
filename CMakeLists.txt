@@ -283,7 +283,9 @@ else()
         reverb_level_flat
         sustain_pedal_holds
         low_register_stays_musical
-        bass_is_mono)
+        bass_is_mono
+        width_profile_staggered
+        detune_spreads_every_stack)
 
     foreach(test_name IN LISTS HORIZON_TEST_NAMES)
         add_test(NAME ${test_name}

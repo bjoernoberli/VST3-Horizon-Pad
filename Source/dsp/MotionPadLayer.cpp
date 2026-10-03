@@ -80,7 +80,7 @@ void MotionPadLayer::renderVoice (int voiceIndex, juce::AudioBuffer<float>& targ
     const auto invSr = 1.0f / (float) sampleRate;
     const auto baseFreq = bentFrequency (v.frequency);
     const auto unison = unisonFor (baseFreq, kNumOscs);
-    const auto driftDepth = (0.004f + modAmount * 0.010f) * unison.driftScale;
+    auto detune = makeDetuneRamp (baseFreq);
     const auto level = 0.25f * v.velocity; // 0.24 in v1: +0.35 dB restores v1's level, which the shared LFOs and new drift left 0.35 dB low (six-seed match, WIDTH 0)
     const auto tracking = keyTrack (baseFreq, kCutoffTrackingBelowC4, kCutoffTrackingAboveC4);
 
@@ -94,13 +94,14 @@ void MotionPadLayer::renderVoice (int voiceIndex, juce::AudioBuffer<float>& targ
         // Voice-steal declick ramp; 1.0 unless this slot is being taken over.
         const auto stealGain = nextStealGain (v);
         const auto brightness = effectiveBrightness (voiceIndex, n);
+        const auto depth = driftDepth (detune.value) * unison.driftScale;
 
         float stackL = 0.0f, stackR = 0.0f;
 
         for (int i = 0; i < kNumOscs; ++i)
         {
-            const auto drift = vs.drift[(size_t) i].next (rng, kOscDriftRateHz[i], sampleRate) * driftDepth;
-            const auto freqHz = baseFreq * (1.0f + kOscDetuneFraction[i] + drift);
+            const auto drift = vs.drift[(size_t) i].next (rng, kOscDriftRateHz[i], sampleRate) * depth;
+            const auto freqHz = baseFreq * (1.0f + kOscDetuneFraction[i] * detune.value + drift);
             const auto inc = juce::jlimit (0.0f, 0.49f, freqHz * invSr);
             vs.phase[(size_t) i] = wrapPhase (vs.phase[(size_t) i] + inc);
 
@@ -110,6 +111,8 @@ void MotionPadLayer::renderVoice (int voiceIndex, juce::AudioBuffer<float>& targ
             stackR += saw * p.right;
             p.advance();
         }
+
+        detune.advance();
 
         vs.filter.setCutoffFrequency (juce::jlimit (40.0f, (float) (sampleRate * 0.45),
                                                     lfoCutoff[n] * brightness * tracking));

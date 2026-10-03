@@ -325,28 +325,54 @@ void drawColumnCard (juce::Graphics& g, juce::Rectangle<float> bounds)
     g.drawRoundedRectangle (bounds.reduced (0.5f), 14.0f, 1.0f);
 }
 
-TwoTierLayout computeTwoTierLayout (juce::Rectangle<int> area)
+ControlLayout computePadControlLayout (juce::Rectangle<int> area)
 {
-    TwoTierLayout t;
+    constexpr int kLabel = 14, kGapAbove = 4, kKnob = 78, kGapBelow = 5, kValue = 22;
+    constexpr int kGroup = kLabel + kGapAbove + kKnob + kGapBelow + kValue;
 
-    area.removeFromTop (4);
-    t.primaryLabel = area.removeFromTop (14);
-    area.removeFromTop (4);
-    t.primaryControl = area.removeFromTop (78);
-    area.removeFromTop (5);
-    t.primaryValue = area.removeFromTop (22);
+    area = area.withSizeKeepingCentre (area.getWidth(), juce::jmin (area.getHeight(), kGroup));
 
-    area.removeFromTop (5);
-    t.dividerY = area.getY();
-    area.removeFromTop (5);
+    ControlLayout c;
+    c.label = area.removeFromTop (kLabel);
+    area.removeFromTop (kGapAbove);
+    c.control = area.removeFromTop (kKnob);
+    area.removeFromTop (kGapBelow);
+    c.value = area.removeFromTop (kValue);
+    return c;
+}
 
-    t.secondaryLabel = area.removeFromTop (12);
-    area.removeFromTop (4);
-    t.secondaryControl = area.removeFromTop (42);
-    area.removeFromTop (4);
-    t.secondaryValue = area.removeFromTop (16);
+MacroGridLayout computeMacroGridLayout (juce::Rectangle<int> area)
+{
+    // In the 214px control area of a 346px grid card this leaves 66px rows
+    // and 37px knobs - smaller than the 42px of the old 2x2 grid, the price
+    // of six macros in the card the design gave four.
+    constexpr int kLabel = 11, kGap = 2, kValue = 14, kDividerGap = 3;
 
-    return t;
+    MacroGridLayout m;
+    area.removeFromTop (2);
+
+    const auto rowHeight = (area.getHeight() - 2 * (2 * kDividerGap + 1)) / 3;
+    m.knobSize = juce::jlimit (28, 42, rowHeight - kLabel - kValue - 2 * kGap);
+
+    for (size_t i = 0; i < m.rows.size(); ++i)
+    {
+        auto row = area.removeFromTop (rowHeight);
+        auto& r = m.rows[i];
+        r.label = row.removeFromTop (kLabel);
+        row.removeFromTop (kGap);
+        r.value = row.removeFromBottom (kValue);
+        row.removeFromBottom (kGap);
+        r.control = row;
+
+        if (i + 1 < m.rows.size())
+        {
+            area.removeFromTop (kDividerGap);
+            m.dividerYs[i] = area.getY();
+            area.removeFromTop (1 + kDividerGap);
+        }
+    }
+
+    return m;
 }
 
 } // namespace horizon::ui

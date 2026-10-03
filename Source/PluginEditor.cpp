@@ -8,13 +8,13 @@ HorizonPadAudioProcessorEditor::HorizonPadAudioProcessorEditor (HorizonPadAudioP
       pitchWheel (processorToUse, WheelSlider::Kind::pitch),
       modWheel (processorToUse, WheelSlider::Kind::mod),
       rootKnob (processorToUse, (int) horizon::LayerIndex::warmFoundation,
-               "ROOT", "life grows", horizon::ParamID::rootVolume, horizon::ParamID::rootWidth),
+               "ROOT", "life grows", horizon::ParamID::rootVolume),
       clearingKnob (processorToUse, (int) horizon::LayerIndex::analogEnsemble,
-                   "CLEARING", "light breaks in", horizon::ParamID::clearingVolume, horizon::ParamID::clearingWidth),
+                   "CLEARING", "light breaks in", horizon::ParamID::clearingVolume),
       expanseKnob (processorToUse, (int) horizon::LayerIndex::airyChoir,
-                  "EXPANSE", "life opens up", horizon::ParamID::expanseVolume, horizon::ParamID::expanseWidth),
+                  "EXPANSE", "life opens up", horizon::ParamID::expanseVolume),
       bloomKnob (processorToUse, (int) horizon::LayerIndex::motionPad,
-                "BLOOM", "life blooms", horizon::ParamID::bloomVolume, horizon::ParamID::bloomWidth),
+                "BLOOM", "life blooms", horizon::ParamID::bloomVolume),
       macrosPanel (processorToUse),
       outputMeter (processorToUse),
       footerBar (processorToUse),
@@ -85,8 +85,8 @@ void HorizonPadAudioProcessorEditor::resized()
     auto gridArea = r.removeFromTop (kGridRowHeight);
 
     // Eight equal-width columns: PITCH and MOD ride the wheels; four blend
-    // the pads (ROOT/CLEARING/EXPANSE/BLOOM); four shape the tone (the
-    // MACROS panel: ATTACK/FILTER/WIDTH/REVERB); OUTPUT is the meter -
+    // the pads (ROOT/CLEARING/EXPANSE/BLOOM); the MACROS panel shapes the
+    // tone (ATTACK/RELEASE, FILTER/REVERB, WIDTH/DETUNE); OUTPUT is the meter -
     // mirroring a Launchkey 25's eight knobs, per the design's mainGridStyle.
     juce::Component* columns[] {
         &pitchWheel, &modWheel, &rootKnob, &clearingKnob,

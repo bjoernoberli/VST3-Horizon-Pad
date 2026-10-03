@@ -31,11 +31,14 @@ Attack/release are long by design — this is an ambient pad, not a lead — but
 the ATTACK/RELEASE macros can pull them down into a fast, click-free,
 percussive-pad range too (see below).
 
-Each layer also has its own **stereo width**: it spreads that layer's detuned
-oscillators across the stereo field with constant-power panning, mirrored on
-alternate voices so a chord's oscillators interleave. Detuned oscillators are
-decorrelated, so the spread is mono-safe by construction and does not change
-the level. The bass stays mono regardless: the side channel is high-passed at
+Stereo width comes from one **WIDTH** macro. Each layer turns it into its own
+width through a fixed profile, so the pads open in order as the knob turns:
+Expanse (the air) from 0%, Clearing from 10%, Bloom from 20%, and Root (the
+foundation) last, from 30%, reaching only 60% of its spread at full WIDTH. The
+width itself spreads each layer's detuned oscillators across the stereo field
+with constant-power panning, mirrored on alternate voices so a chord's
+oscillators interleave. Detuned oscillators are decorrelated, so the spread is
+mono-safe by construction and does not change the level. The bass stays mono regardless: the side channel is high-passed at
 140 Hz before the reverb, and the reverb itself only receives the band above
 160 Hz. Every layer is also key-tracked and register-aware (see
 `Source/dsp/LayerBase.h`), so it holds its character from the bass to the top
@@ -60,11 +63,11 @@ own movement.
 
 ## Parameters
 
-Twelve host-automatable parameters (all 0–100%), in this fixed order — four
-volumes, then four macros, then four widths — so that a controller mapping
-its first 8 knobs to a plugin's first 8 host parameters (e.g. a Launchkey in
-Live's generic Device-knob mode) lands knobs 1–4 on the pad volumes and
-knobs 5–8 on the macros:
+Ten host-automatable parameters (all 0–100%), in this fixed order — four
+volumes, then six macros — so that a controller mapping its first 8 knobs to
+a plugin's first 8 host parameters (e.g. a Launchkey in Live's generic
+Device-knob mode) lands knobs 1–4 on the pad volumes and knobs 5–8 on
+ATTACK/RELEASE/FILTER/REVERB:
 
 | # | Parameter | ID |
 |---|-----------|-----|
@@ -76,10 +79,8 @@ knobs 5–8 on the macros:
 | 6 | Release | `releaseMacro` |
 | 7 | Filter | `filterMacro` |
 | 8 | Reverb | `reverbMacro` |
-| 9 | Root width | `rootWidth` |
-| 10 | Clearing width | `clearingWidth` |
-| 11 | Expanse width | `expanseWidth` |
-| 12 | Bloom width | `bloomWidth` |
+| 9 | Width | `widthMacro` |
+| 10 | Detune | `detuneMacro` |
 
 - **Attack / Release** scale each layer's own designed attack/release time.
   50% is unity; below ~15% the mapping tapers exponentially down to a fast,
@@ -90,8 +91,16 @@ knobs 5–8 on the macros:
   50%, brighter above), ramped per sample rather than stepped once per
   block, so sweeping it under host automation doesn't zipper.
 - **Reverb** is the shared reverb send level (see FX chain above).
+- **Width** is the stereo width of the whole instrument, 0% mono, applied to
+  each pad through its own profile (see above).
+- **Detune** scales how far apart each pad's stacked oscillators are tuned:
+  their static detune and their slow pitch drift. 50% is the designed sound
+  (bit-exact); 0% halves the spread, 100% doubles it. It eases out below C3,
+  so low notes stay stable, and it leaves Root's saw edge and sub-octave and
+  the MOD wheel's extra drift alone. Clearing responds least, because its
+  ensemble adds pitch movement of its own.
 
-All twelve parameters are smoothed (a `SmoothedValue` ramp, not a raw value
+All ten parameters are smoothed (a `SmoothedValue` ramp, not a raw value
 applied instantaneously) somewhere on their path to audio, to avoid zipper
 noise under host automation.
 
@@ -105,7 +114,7 @@ it's left. These are intentionally *not* automation lanes — see
 
 ### A/B buffers and user presets
 
-Two independent snapshots (**A** / **B**) of all twelve parameters, switchable
+Two independent snapshots (**A** / **B**) of all ten parameters, switchable
 and copyable from the preset row — handy for comparing a tweak against where
 you started. Beyond the factory presets below, **"+ Save preset"** writes to
 a small on-disk library (`UserPresets.xml` next to the plugin's app-data
@@ -151,7 +160,7 @@ NaN/Inf and peaks above 0 dBFS on an eight-note chord.
 | 17 | Ruhepuls | A slow resting pulse, with subtle motion underneath |
 | 18 | Klarheit | Clear, present and simple - a mix-friendly starting point |
 
-Each preset's full twelve-value parameter set lives in
+Each preset's full ten-value parameter set lives in
 [`Source/presets/Presets.cpp`](Source/presets/Presets.cpp).
 
 ---
@@ -235,7 +244,7 @@ cmake --build build-release --target HorizonPadSoundTool -j 8
 ctest --test-dir build-release --output-on-failure
 ```
 
-Seventeen tests, under 40 seconds, driving the real plugin DSP through
+Nineteen tests, under 40 seconds, driving the real plugin DSP through
 `HorizonPadSoundTool` ([`tools/tests/dsp_tests.py`](tools/tests/dsp_tests.py)).
 Five assert end-to-end properties — zero reported latency, bit-identical
 renders from a seeded reset, all 36 sample-rate × block-size combinations
@@ -256,7 +265,9 @@ feature, or an instrument-level contract:
 | `width_mono_safe_and_level_flat` | WIDTH collapsing in mono or changing the level |
 | `sustain_pedal_holds` | The sustain pedal being ignored |
 | `low_register_stays_musical` | Roughness in the bass register; Expanse leaving its register |
-| `bass_is_mono` | Stereo content below ~100 Hz |
+| `bass_is_mono` | Stereo content below ~100 Hz (at WIDTH and DETUNE 100%) |
+| `width_profile_staggered` | WIDTH opening every pad at once instead of air first, foundation last |
+| `detune_spreads_every_stack` | DETUNE not reaching a pad's stack, or changing the level |
 
 The suite needs `python3` with `numpy` and `scipy`. Without them CMake skips
 test registration, so a plain plugin build never fails for want of them.
@@ -455,8 +466,8 @@ Source/
     HorizonLookAndFeel.{h,cpp}     Palette, typography, shared panel/card painters
     TitleBanner.{h,cpp}            Logo, wordmark
     PresetBar.{h,cpp}              Factory + user presets, save flow, A/B buffers
-    PadKnob.{h,cpp}                One layer's VOL/WIDTH knob pair
-    MacrosPanel.{h,cpp}            ATTACK/RELEASE/FILTER/REVERB
+    PadKnob.{h,cpp}                One layer's VOL knob
+    MacrosPanel.{h,cpp}            ATTACK/RELEASE/FILTER/REVERB/WIDTH/DETUNE
     WheelSlider.{h,cpp}            PITCH/MOD wheels
     OutputMeter.{h,cpp}            Live output level (read-only)
     FooterBar.{h,cpp}              Bottom strip: wordmark, tagline, buffer/layer/macro counts

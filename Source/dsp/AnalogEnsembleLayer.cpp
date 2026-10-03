@@ -78,7 +78,7 @@ void AnalogEnsembleLayer::renderVoice (int voiceIndex, juce::AudioBuffer<float>&
     const auto invSr = 1.0f / (float) sampleRate;
     const auto baseFreq = bentFrequency (v.frequency);
     const auto unison = unisonFor (baseFreq, kNumOscs);
-    const auto driftDepth = (0.004f + modAmount * 0.010f) * unison.driftScale;
+    auto detune = makeDetuneRamp (baseFreq);
     const auto level = kLayerLevel * v.velocity;
     const auto tracking = keyTrack (baseFreq, kCutoffTrackingBelowC4, kCutoffTrackingAboveC4);
 
@@ -92,13 +92,14 @@ void AnalogEnsembleLayer::renderVoice (int voiceIndex, juce::AudioBuffer<float>&
         // Voice-steal declick ramp; 1.0 unless this slot is being taken over.
         const auto stealGain = nextStealGain (v);
         const auto brightness = effectiveBrightness (voiceIndex, n);
+        const auto depth = driftDepth (detune.value) * unison.driftScale;
 
         float stackL = 0.0f, stackR = 0.0f;
 
         for (int i = 0; i < kNumOscs; ++i)
         {
-            const auto drift = vs.drift[(size_t) i].next (rng, kOscDriftRateHz[i], sampleRate) * driftDepth;
-            const auto freqHz = baseFreq * (1.0f + kOscDetuneFraction[i] + drift);
+            const auto drift = vs.drift[(size_t) i].next (rng, kOscDriftRateHz[i], sampleRate) * depth;
+            const auto freqHz = baseFreq * (1.0f + kOscDetuneFraction[i] * detune.value + drift);
             const auto inc = juce::jlimit (0.0f, 0.49f, freqHz * invSr);
             vs.phase[(size_t) i] = wrapPhase (vs.phase[(size_t) i] + inc);
 
@@ -108,6 +109,8 @@ void AnalogEnsembleLayer::renderVoice (int voiceIndex, juce::AudioBuffer<float>&
             stackR += saw * p.right;
             p.advance();
         }
+
+        detune.advance();
 
         const auto cutoff = juce::jlimit (40.0f, (float) (sampleRate * 0.45),
                                           (700.0f + envGain * 2200.0f) * brightness * tracking);

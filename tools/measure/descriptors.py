@@ -13,7 +13,10 @@ answers the design questions the brief and the prototype header actually ask:
   pocket    Where the default blend's energy sits against the brief's job:
             "sit UNDER acoustic guitar, piano and group vocals".
   stereo    Inter-channel correlation and mono-sum loss per layer at WIDTH 0
-            and 1, and loudness change from WIDTH 0 to 1 (rule 8).
+            and 1, and loudness change from WIDTH 0 to 1 (rule 8). Since
+            2026-10-02 WIDTH is one macro and 1 is each pad's profile maximum
+            (Root 0.6, Bloom 0.9), so Root and Bloom at "w1" are not comparable
+            with baselines from before that date.
   movement  Envelope modulation spectrum per layer, single note and chord:
             dominant rate and depth. Movement that cancels in chords is found here.
   presets   Loudness, centroid and band balance of every factory preset.
@@ -210,7 +213,7 @@ def section_stereo():
             for width in (0.0, 1.0):
                 hold = 6.0
                 x = render([f"--solo={layer}", f"--notes={CHORD}", "--param=reverb=0",
-                            f"--param={layer}-width={width}"], hold=hold, seed=seed)
+                            f"--param=width={width}"], hold=hold, seed=seed)
                 ss = window(x, 3, hold)
                 corr, loss = stereo(ss)
                 levels[width] = lufs(ss)
@@ -228,7 +231,7 @@ def section_movement():
             row = {}
             for label, notes in (("note", "60"), ("chord", CHORD)):
                 x = render([f"--solo={layer}", f"--notes={notes}", "--param=reverb=0",
-                            f"--param={layer}-width=0"], hold=10.0, seed=seed)
+                            "--param=width=0"], hold=10.0, seed=seed)
                 rate, depth = modulation(window(x, 4, 10))
                 row[label] = {"rate_hz": rate, "depth_pct": depth}
             return row

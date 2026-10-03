@@ -35,7 +35,7 @@ void FooterBar::paint (juce::Graphics& g)
     const auto bufferLetter = processor.getActiveBufferIndex() == 0 ? "A" : "B";
 
     g.drawText (juce::String ("BUFFER ") + bufferLetter + " " + juce::String::fromUTF8 ("\xc2\xb7") + " 4 LAYERS "
-               + juce::String::fromUTF8 ("\xc2\xb7") + " 12 MACROS",
+               + juce::String::fromUTF8 ("\xc2\xb7") + " 6 MACROS",
                r, juce::Justification::centredRight);
 
     // --- Tagline, centred between the two labels above (moved here from

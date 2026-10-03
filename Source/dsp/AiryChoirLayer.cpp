@@ -98,7 +98,6 @@ void AiryChoirLayer::renderVoice (int voiceIndex, juce::AudioBuffer<float>& targ
     const auto shimmerLen = juce::jmin (numSamples, shimmerBus.getNumSamples());
 
     const auto invSr = 1.0f / (float) sampleRate;
-    const auto driftDepth = 0.004f + modAmount * 0.010f;
     const auto level = 0.185f * v.velocity; // 0.22 in v1: -1.5 dB matches v1 at C4, the voicing anchor, after the one-pole LP restored the prototype's top end
     const auto noteFreq = bentFrequency (v.frequency);
 
@@ -112,6 +111,10 @@ void AiryChoirLayer::renderVoice (int voiceIndex, juce::AudioBuffer<float>& targ
     const auto lowerGain = std::sqrt (1.0f - upper);
     const auto upperGain = std::sqrt (upper);
     const auto baseFreq = noteFreq * std::pow (2.0f, octave);
+
+    // DETUNE eases out in the bass, judged by where the stack sounds - which,
+    // pinned, is never the bass.
+    auto detune = makeDetuneRamp (baseFreq);
 
     // Tracking follows where the stack actually sounds, so below C4 the
     // filters stay where they were voiced.
@@ -129,13 +132,14 @@ void AiryChoirLayer::renderVoice (int voiceIndex, juce::AudioBuffer<float>& targ
         // Voice-steal declick ramp; 1.0 unless this slot is being taken over.
         const auto stealGain = nextStealGain (v);
         const auto brightness = effectiveBrightness (voiceIndex, n);
+        const auto depth = driftDepth (detune.value);
 
         float stackL = 0.0f, stackR = 0.0f;
 
         for (int i = 0; i < kNumOscs; ++i)
         {
-            const auto drift = vs.drift[(size_t) i].next (rng, kOscDriftRateHz[i], sampleRate) * driftDepth;
-            const auto freqHz = baseFreq * (1.0f + kOscDetuneFraction[i] + drift);
+            const auto drift = vs.drift[(size_t) i].next (rng, kOscDriftRateHz[i], sampleRate) * depth;
+            const auto freqHz = baseFreq * (1.0f + kOscDetuneFraction[i] * detune.value + drift);
             const auto inc = juce::jlimit (0.0f, 0.49f, freqHz * invSr);
             vs.phase[(size_t) i] = wrapPhase (vs.phase[(size_t) i] + inc);
 
@@ -153,6 +157,8 @@ void AiryChoirLayer::renderVoice (int voiceIndex, juce::AudioBuffer<float>& targ
             stackR += tri * p.right;
             p.advance();
         }
+
+        detune.advance();
 
         vs.sweepPhase = wrapPhase (vs.sweepPhase + 0.09f * invSr);
         const auto sweepHz = 450.0f + (std::sin (vs.sweepPhase * juce::MathConstants<float>::twoPi) * 0.5f + 0.5f) * 900.0f;

@@ -237,6 +237,39 @@ Gate status is no longer tracked in this document. It lives in
 [`gate-status.md`](gate-status.md), which links the artefact for each gate.
 This file stays what it is: the G0 brief and its dated amendments.
 
+### A-006 - one WIDTH macro, a DETUNE macro, ten parameters (2026-10-02)
+
+Owner decisions, 2026-10-02, following [`width-design-draft.md`](width-design-draft.md):
+
+- **WIDTH x4 becomes one WIDTH macro** (macro 5). Every factory preset gave all four
+  pads the same width, so the four knobs carried one knob's worth of information
+  and the shape across the pads never changed. Each pad now has a fixed width
+  profile (where on the knob it opens, how wide it gets): Expanse from 0% to
+  100%, Clearing from 10% to 100%, Bloom from 20% to 90%, Root from 30% to 60%. The air
+  opens first and the foundation last, so one knob changes the shape as well as
+  the amount. The mechanism is the v2 per-oscillator spread, not the "Haas
+  spread" `core_controls` still names (that wording has been stale since v2).
+- **DETUNE is added** (macro 6). It scales every pad's own designed unison
+  detune and baseline drift, 0.5x-2x on the character-macro curve, 50% = the
+  designed sound (bit-exact), easing out below C3. It is a global macro like
+  FILTER, which scales each pad's own cutoff, so it does not reopen
+  `out_of_scope`'s "per-layer tone knobs (cutoff, detune, osc mix)".
+- **Ten host parameters**: four volumes, then ATTACK, RELEASE, FILTER, REVERB,
+  WIDTH, DETUNE. Params 1-8 are unchanged, so the Launchkey mapping holds. A
+  preset is now a point in a 10-dimensional blend/macro space, and the only
+  per-pad control is volume: `must_do`'s "no per-layer tone block beyond WIDTH"
+  now reads "no per-layer tone block".
+- **No backwards compatibility until the owner says so.** The plugin has not
+  been used beyond testing, so parameter IDs, state and presets changed without
+  migration. This also answers `sound-design-v2.md`'s open question about a
+  version flag for existing projects: none is needed.
+- **Naming rule**: a control name must not have a second meaning in audio
+  (a "BAND" macro was proposed and rejected for reading as bandwidth). Recorded
+  in the playbook, F.14.2 and D.5.2.
+
+Measured and verified in [`width-design-draft.md`](width-design-draft.md) ("Built");
+the listening items are in [`gate-status.md`](gate-status.md).
+
 ## Where the exceptions go
 
 12.5 requires a written, dated, named exception whenever a measurement fails and the

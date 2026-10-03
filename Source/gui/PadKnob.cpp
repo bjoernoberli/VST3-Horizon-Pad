@@ -21,7 +21,7 @@ namespace
 
 PadKnob::PadKnob (HorizonPadAudioProcessor& processorToUse, int layerIndex,
                   juce::String captionToUse, juce::String subtitleToUse,
-                  const char* volumeParamId, const char* widthParamId)
+                  const char* volumeParamId)
     : accent (Palette::layerAccents[juce::jlimit (0, kNumLayers - 1, layerIndex)]),
       caption (std::move (captionToUse)),
       subtitle (std::move (subtitleToUse))
@@ -32,13 +32,6 @@ PadKnob::PadKnob (HorizonPadAudioProcessor& processorToUse, int layerIndex,
     volumeAttachment = std::make_unique<juce::AudioProcessorValueTreeState::SliderAttachment> (
         processorToUse.getAPVTS(), volumeParamId, volumeSlider);
     volumeSlider.onValueChange = [this] { repaint(); };
-
-    setUpRingKnob (widthSlider, Palette::widthAccent);
-    widthSlider.setTooltip (caption + " stereo width - 0% is mono, 100% spreads its detuned oscillators across the field (mono-safe).");
-    addAndMakeVisible (widthSlider);
-    widthAttachment = std::make_unique<juce::AudioProcessorValueTreeState::SliderAttachment> (
-        processorToUse.getAPVTS(), widthParamId, widthSlider);
-    widthSlider.onValueChange = [this] { repaint(); };
 }
 
 PadKnob::~PadKnob() = default;
@@ -47,16 +40,10 @@ void PadKnob::resized()
 {
     const auto slots = computeColumnSlots (getLocalBounds());
 
-    // Neither knob here uses the shared row-aligned value slot other cards
-    // put their one readout in (VOL's value sits right under its own knob
-    // instead, WIDTH's under its own) - reclaim that space for the two
-    // knobs' extra room rather than leaving it blank. computeTwoTierLayout()
-    // is the same split MacrosPanel uses, so VOL lines up with ATTACK/
-    // RELEASE and WIDTH lines up with FILTER/REVERB across the grid row.
-    const auto t = computeTwoTierLayout (slots.control.getUnion (slots.value));
-
-    volumeSlider.setBounds (t.primaryControl.withSizeKeepingCentre (78, 78));
-    widthSlider.setBounds (t.secondaryControl.withSizeKeepingCentre (42, 42));
+    // VOL's value sits right under its own knob instead of in the shared
+    // row-aligned value slot, so the group is centred in both slots together.
+    const auto c = computePadControlLayout (slots.control.getUnion (slots.value));
+    volumeSlider.setBounds (c.control.withSizeKeepingCentre (78, 78));
 }
 
 void PadKnob::paint (juce::Graphics& g)
@@ -64,8 +51,7 @@ void PadKnob::paint (juce::Graphics& g)
     drawColumnCard (g, getLocalBounds().toFloat());
 
     const auto slots = computeColumnSlots (getLocalBounds());
-    const auto fullControl = slots.control.getUnion (slots.value);
-    const auto t = computeTwoTierLayout (fullControl);
+    const auto c = computePadControlLayout (slots.control.getUnion (slots.value));
 
     // --- Status dot: lit (with a glow) once the pad is audible, matching the
     // design's dotStyle threshold (vol > 0.04).
@@ -93,30 +79,15 @@ void PadKnob::paint (juce::Graphics& g)
     g.drawFittedText (subtitle, slots.caption, juce::Justification::centred, 2);
 
     // --- VOL: label, then (drawn via the slider itself) its knob, then its
-    // own value directly beneath it - the primary, emphasised readout.
+    // own value directly beneath it.
     g.setColour (Palette::macroLabel);
     g.setFont (labelFont (11.0f, true));
-    g.drawText ("VOL", t.primaryLabel, juce::Justification::centred);
+    g.drawText ("VOL", c.label, juce::Justification::centred);
 
     g.setColour (Palette::textValue);
     g.setFont (labelFont (17.0f, true));
     g.drawText (juce::String (juce::roundToInt (volumeSlider.getValue() * 100.0)) + "%",
-               t.primaryValue, juce::Justification::centred);
-
-    // --- A thin divider separating the primary VOL control from the
-    // secondary WIDTH control below it.
-    g.setColour (Palette::dividerColor);
-    g.fillRect (t.secondaryLabel.withY (t.dividerY).withHeight (1));
-
-    // --- WIDTH: the same label/knob/value grouping, smaller throughout.
-    g.setColour (Palette::macroLabel);
-    g.setFont (labelFont (10.0f, true));
-    g.drawText ("WIDTH", t.secondaryLabel, juce::Justification::centred);
-
-    g.setColour (Palette::textDim);
-    g.setFont (labelFont (11.0f));
-    g.drawText (juce::String (juce::roundToInt (widthSlider.getValue() * 100.0)) + "%",
-               t.secondaryValue, juce::Justification::centred);
+               c.value, juce::Justification::centred);
 }
 
 } // namespace horizon::ui
