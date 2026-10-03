@@ -149,3 +149,30 @@ worktree of `05c3f44`):
   -1 dBTP applies to a mastered file before encoding. The codec row now masters each
   render to -1 dBTP and measures the decode (AAC overshoot <= 0.1 dB, MP3 no clipped
   samples), and the -14 LUFS peak is reported, not judged. PLR 11.4-13.6 dB.
+
+## Checked against two practitioner videos (2026-10-04) - proposals for the owner
+
+Sage Audio, "Fixing the 3 WORST Sounds in Modern Music Production" and "Formant
+Shifting is WAY More Useful Than People Think" (transcripts read; integrated into the
+playbook as v3.3: I.1, I.5.1, I.7.1, E.2-E.4, E.8.6-E.10). What they mean for Horizon Pad:
+
+**Measured: Horizon Pad is not "sterile".** The first video's complaint about stock
+synths is identical repeats - same tuning, timing and decay every time. The same
+four-note chord struck three times (product mode, unseeded) differs strike to strike
+by a +3.0 dB residual (uncorrelated waveforms: random start phases and drift), up to
+6.3 dB in 100 ms envelope windows and 640 cents in brightness, while the mean level
+holds within 0.09 dB - which is what a pad should keep. Nothing to fix; the
+measurement (`dspkit.repeat_variation`) is the playbook's new A.6 descriptor.
+
+**Proposals - each changes the signed-off sound, so none is applied:**
+
+| # | Idea | From | What it would change | How to judge it |
+|---|---|---|---|---|
+| P1 | **Expanse as a choir with fixed formants.** Expanse is called a choir but has no vowel formants: its one resonant band-pass tracks the note (0.7 above C4, 0.3 below), so its resonance - its apparent size - moves with every note. Real voices keep their formants fixed while the pitch moves. A small fixed vowel-formant bank (not key-tracked) after the stack would keep one "singer" across the keyboard | Formants video | Expanse's character across the range | Spectral-envelope peak vs note (flat = one singer); keyboard span test; blind A/B against `05c3f44`/HEAD |
+| P2 | **Voice-card variance.** Small fixed per-voice-slot offsets (cutoff, envelope time, tuning) so a chord's notes are never quite identical - what analog polysynths do and their reissues expose as "vintage" | Playbook I.5.1, prompted by the stock-synth fix | Chord texture, very subtly | Chord-note variance; must stay inside level and tuning JNDs |
+| P3 | **A quiet delay** in the FX chain to fill the gaps between chord changes, its feedback carrying the drift | Stock-synth fix, step 4 | Adds an effect; needs a macro or a fixed amount - brief amendment (editing stays shallow) | Gap energy between chords; mix-context listening |
+| P4 | **Tape-style softening** (gentle HF roll-off, slight wow/flutter) on the output | Stock-synth fix, step 2 | The top end and stability of everything | Centroid and modulation spectrum; blind A/B |
+| P5 | **Early reflections before the Freeverb tail** for a believable room (the current send has 20 ms pre-delay, deliberately, and a late-tail-weighted algorithm) | "Realistic room first" | The reverb's front | Impulse response energy in 5-80 ms; listening |
+
+Not applicable: formant de-essing, kick weight, noise-carrier air and vocal thickening
+are mixing uses on recorded sources; Horizon Pad has no voice or drum input.
