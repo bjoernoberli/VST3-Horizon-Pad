@@ -346,20 +346,36 @@ def test_voice_steal_declick():
 
     Taking over a slot used to hard-reset the envelope mid-cycle; the worst
     of eight runs stepped +3.8 dB relative to the signal.
+
+    Seeded over twelve fixed seeds (rule 23). The first version took the worst
+    of six *unseeded* renders per side and failed about 2 runs in 10 on a
+    correct build: the step metric is the largest sample-to-sample jump, so
+    saw edges at random phases make single values swing by 10 dB. Measured
+    2026-10-03 over seeds 1-12 (median steal - median free / worst steal vs
+    worst free): 5056369 -1.8 dB / -12.4 vs -11.2; 05c3f44 -2.1 dB /
+    -11.4 vs -9.2; 5056369 with the declick removed +7.9 dB / -0.6 vs -11.2,
+    which fails both conditions below by about 5 dB.
     """
-    def worst(notes, onsets):
+    seeds = range(1, 13)
+
+    def steps(notes, onsets):
         vals = []
-        for _ in range(6):
-            d = run([f"--notes={notes}", f"--note-onsets={onsets}",
+        for seed in seeds:
+            d = run([f"--notes={notes}", f"--note-onsets={onsets}", f"--seed={seed}",
                      "--hold=6", "--tail=1", "--probe-at=3.0"])
             vals.append(d["transients"]["probes"][0]["stepRelDb"])
-        return max(vals)
+        return sorted(vals)
 
-    steal = worst("60,62,64,65,67,69,71,72,74", "0,0,0,0,0,0,0,0,3")
-    free = worst("60,62,64,65,67,69,71,74", "0,0,0,0,0,0,0,3")
-    # A steal may not be more than 6 dB worse than a free-slot note-on.
-    if steal > free + 6.0:
-        raise Fail(f"voice steal steps {steal:.1f} dB vs {free:.1f} dB for a "
+    def median(v):
+        return 0.5 * (v[len(v) // 2 - 1] + v[len(v) // 2])
+
+    steal = steps("60,62,64,65,67,69,71,72,74", "0,0,0,0,0,0,0,0,3")
+    free = steps("60,62,64,65,67,69,71,74", "0,0,0,0,0,0,0,3")
+    if median(steal) > median(free) + 3.0:
+        raise Fail(f"voice steal median step {median(steal):.1f} dB vs {median(free):.1f} dB "
+                   "for a free slot - declick ramp regressed")
+    if steal[-1] > free[-1] + 6.0:
+        raise Fail(f"voice steal worst step {steal[-1]:.1f} dB vs {free[-1]:.1f} dB for a "
                    "free slot - declick ramp regressed")
 
 
@@ -392,24 +408,38 @@ def test_low_register_stays_musical():
 
 
 def test_bass_is_mono():
-    """Below ~120 Hz the output is mono, whatever WIDTH does above it.
+    """Below ~120 Hz the output is mono, whatever WIDTH or the reverb does above it.
 
     WIDTH spreads whole oscillators; without the side high-pass a C2 chord at
     full width put its fundamentals into the side channel. DETUNE at 100%
     decorrelates the stacks further, so it is the worst case.
+
+    With the reverb on, the dry bass was mono but the reverb's decorrelated
+    return rebuilt a side channel below the split: -5.3 to -5.6 dB under the
+    mid on Sternenzelt and Bergecho (tools/measure/translation.py, 2026-10-03),
+    because the side high-pass ran before the send. The second render guards
+    that, tail included.
     """
-    x, sr = render(["--notes=36,43,48", "--seed=3", "--param=reverb=0",
-                    "--param=root=1;clearing=1;expanse=1;bloom=1",
-                    "--param=width=1;detune=1",
-                    "--hold=6", "--tail=0.2"])
     from scipy import signal
-    seg = window(x, sr, 3.0, 6.0)
-    b, a = signal.butter(4, 100, fs=sr)
-    mid = signal.lfilter(b, a, seg.mean(axis=1))
-    side = signal.lfilter(b, a, 0.5 * (seg[:, 0] - seg[:, 1]))
-    ratio = 10 * np.log10((side ** 2).mean() / ((mid ** 2).mean() + 1e-20) + 1e-20)
-    if ratio > -15.0:
-        raise Fail(f"side below 100 Hz is only {ratio:.1f} dB under the mid at full width")
+    b, a = signal.butter(4, 100, fs=48000)
+
+    def side_under_mid(reverb, t0, t1, tail):
+        x, sr = render(["--notes=36,43,48", "--seed=3", f"--param=reverb={reverb}",
+                        "--param=root=1;clearing=1;expanse=1;bloom=1",
+                        "--param=width=1;detune=1",
+                        "--hold=6", f"--tail={tail}"])
+        seg = window(x, sr, t0, t1)
+        mid = signal.lfilter(b, a, seg.mean(axis=1))
+        side = signal.lfilter(b, a, 0.5 * (seg[:, 0] - seg[:, 1]))
+        return 10 * np.log10((side ** 2).mean() / ((mid ** 2).mean() + 1e-20) + 1e-20)
+
+    dry = side_under_mid(0, 3.0, 6.0, 0.2)
+    if dry > -15.0:
+        raise Fail(f"side below 100 Hz is only {dry:.1f} dB under the mid at full width")
+    wet = side_under_mid(1, 3.0, 8.0, 2.0)
+    if wet > -15.0:
+        raise Fail(f"with REVERB 100% the side below 100 Hz is only {wet:.1f} dB under the "
+                   "mid - the reverb return is putting stereo back into the bass")
 
 
 # --------------------------------------------------------------------------

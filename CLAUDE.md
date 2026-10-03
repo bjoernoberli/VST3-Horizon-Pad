@@ -84,7 +84,7 @@ cmake --build build-release --target HorizonPadSoundTool -j 8
 ctest --test-dir build-release --output-on-failure
 ```
 
-Nineteen tests (~40 s), `tools/tests/dsp_tests.py`, registered by CMake. They
+Nineteen tests (~55 s), `tools/tests/dsp_tests.py`, registered by CMake. They
 drive the real DSP through `HorizonPadSoundTool` rather than unit-testing
 classes: latency, seeded-reset determinism, the 36 sample-rate x block-size
 combinations, 60 s of silence, all 18 presets; regression guards, one per bug
@@ -105,7 +105,10 @@ battery, reverb decay, port-vs-prototype null test), `descriptors.py` (is it the
 sound we designed: layer grid, keyboard, mix pocket, stereo, movement, presets -
 four seeds per figure, `--save`/`--compare` against `docs/baselines/`) and
 `register.py` (roughness, pitch salience, harmonic content and low side energy
-per note, C1-C5 and low voicings). `tools/listening/make_session.py` renders a
+per note, C1-C5 and low voicings), and `translation.py` (playbook F.7 / rule 34:
+mono sum, phone speaker, -14 LUFS normalisation, AAC/MP3 round trip, stereo bass;
+baseline `docs/baselines/translation-v2.json`; uses the playbook's `dspkit` from
+`~/.claude/docs/dsp-kit`, plus `afconvert` and `lame`). `tools/listening/make_session.py` renders a
 blind, loudness-matched A/B/X page (baseline build vs candidate) for the
 listening passes the measurements cannot settle.
 
@@ -113,6 +116,27 @@ The tool's `--param` flag is repeatable (it silently kept only the last one
 before 2026-09-26 - G5 was re-run, see `docs/g5-null-test.md`); the applied
 state is echoed under `activeParams`, and scripts should assert on it.
 `--pedal=down,up` sends the sustain pedal.
+
+**Real-time safety (rule 35).** `-DHORIZON_RTSAN=ON` builds the sound tool with
+RealtimeSanitizer; every `processBlock` then runs as a real-time context, and any
+allocation, lock or system call aborts with a stack trace. Needs Homebrew LLVM (Apple
+clang has no RTSan) and, with JUCE 8.0.4, two workarounds - the SDK's libc++ headers
+and a private JUCE copy without one deprecated constructor clang 23 rejects (playbook
+D.1.6):
+
+```bash
+SDK=$(xcrun --show-sdk-path)
+cp -R build-release/_deps/juce-src /tmp/juce-rtsan   # then delete the two-line
+#   template AudioPluginInstance (const short channelLayoutList[numLayouts][2]) constructor
+#   in modules/juce_audio_processors/processors/juce_AudioPluginInstance.h
+cmake -B build-rtsan -G Ninja -DCMAKE_BUILD_TYPE=RelWithDebInfo -DHORIZON_RTSAN=ON \
+  -DCMAKE_C_COMPILER=/opt/homebrew/opt/llvm/bin/clang -DCMAKE_CXX_COMPILER=/opt/homebrew/opt/llvm/bin/clang++ \
+  "-DCMAKE_CXX_FLAGS=-nostdinc++ -isystem $SDK/usr/include/c++/v1" -DFETCHCONTENT_SOURCE_DIR_JUCE=/tmp/juce-rtsan
+cmake --build build-rtsan --target HorizonPadSoundTool
+export RTSAN_OPTIONS=external_symbolizer_path=/opt/homebrew/opt/llvm/bin/llvm-symbolizer  # default symbolizer hangs
+HORIZON_RTSAN_SELFTEST=1 ./build-rtsan/HorizonPadSoundTool --notes=60 --hold=1   # must abort (proves the check is live)
+python3 tools/tests/dsp_tests.py --tool ./build-rtsan/HorizonPadSoundTool       # all 19 clean, 2026-10-03
+```
 
 ### CI
 
@@ -165,10 +189,11 @@ and baseline drift, 0.5x-2x with 50% bit-exact, eased out below C3; Root's saw
 edge and sub and the MOD wheel's drift are not scaled), and the register helpers every layer uses:
 `keyTrack` (asymmetric key tracking anchored at C4, the voicing note),
 `unisonFor` (partners and drift tighten below C3), smoothed-random `Drift`,
-`polyBlampTriangle`. `FxChain.h/.cpp` holds the shared reverb send: the side
-channel is high-passed at 140 Hz first (mono bass), then a one-pole split at
-160 Hz keeps the bass dry and only the band above is sent (20 ms pre-delay) and
-crossfaded equal-power.
+`polyBlampTriangle`. `FxChain.h/.cpp` holds the shared reverb send: a one-pole
+split at 160 Hz keeps the bass dry and only the band above is sent (20 ms
+pre-delay) and crossfaded equal-power; the side channel of the finished mix -
+dry and reverb return - is high-passed at 140 Hz, 24 dB/oct, **last** (mono bass,
+rule 26; it ran first until 2026-10-03, and the reverb return rebuilt stereo bass).
 
 ### Voice allocation
 

@@ -210,6 +210,18 @@ target_compile_features(HorizonPadSoundTool PRIVATE cxx_std_17)
 
 target_link_libraries(HorizonPadSoundTool PRIVATE HorizonPad)
 
+# Real-time safety (playbook rule 35): build the tool with RealtimeSanitizer so
+# the test suite runs every processBlock as a real-time context. Needs an
+# upstream LLVM 20+ toolchain, e.g.
+#   cmake -B build-rtsan -G Ninja -DCMAKE_BUILD_TYPE=RelWithDebInfo -DHORIZON_RTSAN=ON \
+#         -DCMAKE_C_COMPILER=/opt/homebrew/opt/llvm/bin/clang \
+#         -DCMAKE_CXX_COMPILER=/opt/homebrew/opt/llvm/bin/clang++
+option(HORIZON_RTSAN "Build HorizonPadSoundTool with RealtimeSanitizer" OFF)
+if (HORIZON_RTSAN)
+    target_compile_options(HorizonPadSoundTool PRIVATE -fsanitize=realtime)
+    target_link_options(HorizonPadSoundTool PRIVATE -fsanitize=realtime)
+endif()
+
 # HorizonPad (SharedCode)'s own object compiles depend (order-only) on the
 # generated JuceHeader.h; make sure it exists before we compile Main.cpp too
 # (target_link_libraries alone only orders the *link* step, not our own

@@ -49,11 +49,55 @@
 #include <array>
 #include <cmath>
 #include <cstdio>
+#include <cstdlib>
 #include <iostream>
 #include <limits>
 #include <map>
 #include <optional>
 #include <vector>
+
+// Real-time safety check (playbook rule 35, D.1.6). Configured with
+// -DHORIZON_RTSAN=ON and an upstream LLVM 20+ clang (Apple clang has no
+// RealtimeSanitizer), every processBlock call below runs inside a
+// [[clang::nonblocking]] function, so RTSan aborts with a stack trace on any
+// allocation, lock or system call the audio path reaches. In a normal build
+// the attribute is absent and this is a plain call.
+//
+// HORIZON_RTSAN_SELFTEST=1 in the environment proves the check is live
+// (rule 28): one heap allocation inside the real-time context, which must
+// abort with "unsafe-library-call ... malloc" on the first block.
+#if defined(__has_feature)
+ #if __has_feature(realtime_sanitizer)
+  #define HORIZON_NONBLOCKING [[clang::nonblocking]]
+  #define HORIZON_HAS_RTSAN 1
+ #endif
+#endif
+#ifndef HORIZON_NONBLOCKING
+ #define HORIZON_NONBLOCKING
+ #define HORIZON_HAS_RTSAN 0
+#endif
+
+#if HORIZON_HAS_RTSAN
+static const bool rtsanSelfTest = std::getenv ("HORIZON_RTSAN_SELFTEST") != nullptr; // read before any block
+static void* volatile rtsanSelfTestSink = nullptr;  // volatile: an unused new/delete pair may be elided
+
+static void rtsanSelfTestAllocation()
+{
+    rtsanSelfTestSink = std::malloc (64);
+    std::free (rtsanSelfTestSink);
+}
+#endif
+
+static void processBlockRealtime (juce::AudioProcessor& processor,
+                                  juce::AudioBuffer<float>& block,
+                                  juce::MidiBuffer& midi) HORIZON_NONBLOCKING
+{
+   #if HORIZON_HAS_RTSAN
+    if (rtsanSelfTest)
+        rtsanSelfTestAllocation();
+   #endif
+    processor.processBlock (block, midi);
+}
 
 using namespace horizon;
 
@@ -1226,7 +1270,7 @@ static int runTool (int argc, char* argv[])
                 midi.addEvent (juce::MidiMessage::controllerEvent (1, 64, value), sample - position);
 
         juce::AudioBuffer<float> block (render.getArrayOfWritePointers(), 2, position, blockLen);
-        processor.processBlock (block, midi);
+        processBlockRealtime (processor, block, midi);
 
         position += blockLen;
     }

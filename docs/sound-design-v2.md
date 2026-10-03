@@ -101,7 +101,7 @@ The fixes, all unchanged at and above C3/C4 so the voiced sound stays put:
 | Bass unison: partner oscillators fade to 35% and drift halves from C3 down to A1, power-normalised | `LayerBase::unisonFor` |
 | Clearing's ensemble only choruses the band above 200 Hz (one-pole, power-complementary split); ensemble made power-neutral (taps / sqrt 3) and the level moved into `kLayerLevel` | `AnalogEnsembleLayer` |
 | Expanse register pinning: below C4 its stack stays near C5, crossfading between the two nearest octaves of the played pitch class (the organ-mixture "break back"); level matched to v1 at C4 | `AiryChoirLayer` |
-| Mono bass: side channel high-passed at 140 Hz, 24 dB/oct, before the reverb split | `FxChain` |
+| Mono bass: side channel high-passed at 140 Hz, 24 dB/oct - since 2026-10-03 at the end of the chain, after the reverb return (before the split, the reverb rebuilt stereo bass: -5.3 dB side/mid) | `FxChain` |
 
 Measured, `main` -> v2 (C1, C2 single notes | C2 open fifth, C2 close triad):
 

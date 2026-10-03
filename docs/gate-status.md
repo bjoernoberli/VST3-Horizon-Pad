@@ -1,7 +1,7 @@
 # Tier P gate status
 
-One page: where Horizon Pad stands against playbook 6.1's gates. Last updated
-**2026-09-24**.
+One page: where Horizon Pad stands against the playbook's gates (v3.2: core card
+section 2, F.15.1). Last updated **2026-10-03**.
 
 Tier **P** (Product), promoted from S on 2026-09-22, which means re-entering at
 G0 and doing every gate the project skipped as a sketch.
@@ -21,33 +21,43 @@ G0 and doing every gate the project skipped as a sketch.
 
 | Requirement | Status |
 |---|---|
-| Steinberg validator exit 0 | **PASS** - 47 tests passed, 0 failed, 2026-09-24, against the current build |
-| pluginval strictness 10 | **PASS** - exit 0, zero failures, 2026-09-24 |
-| CTest suite green | **PASS** - 8/8 in 28 s (`ctest --test-dir build-release`) |
+| Steinberg validator exit 0 | **PASS** - 47/47, 2026-09-24 (v1). Re-run on v2 (`5056369`) 2026-10-03: **47/47**, VST3 SDK 3.8.1 (`3cdf9ca`) |
+| pluginval strictness 10 | **PASS** - 2026-09-24 (v1). Re-run on v2 2026-10-03: **PASS**, pluginval 1.0.4, in-process (1.0.4 has no `--rtcheck`) |
+| CTest suite green | **PASS** - 8/8 (v1, 2026-09-24); **19/19 in 55 s** on v2, 2026-10-03 |
+| Real-time safety (rule 35) | **PASS** on v2, 2026-10-03: all 19 tests clean under RealtimeSanitizer (`build-rtsan`, see CLAUDE.md); self-test proves the check fires |
 | Three hosts, two platforms | **1 of 3.** Ableton Live on macOS confirmed by the owner. Windows Ableton and Waveform outstanding. |
 
 The tests are in `tools/tests/dsp_tests.py`, registered with CTest by
-`CMakeLists.txt`. Five assert definition-of-done properties (latency, seeded
-determinism, the 36-combination rate/block matrix, behaviour after 60 s of
-silence, all 18 presets safe); three are regression guards, one per bug that
-measurement caught on 2026-09-24.
+`CMakeLists.txt`: definition-of-done properties (latency, seeded determinism, the
+36-combination rate/block matrix, 60 s of silence, all presets safe), regression
+guards (one per bug measurement caught), presence tests per defining feature, and
+instrument-level contracts (keyboard span, mono bass, pedal, low register, width).
 
 ## What is outstanding
 
-Nothing blocks a release except host validation. In rough order of how much
-each would change:
+In rough order of how much each would change (revised 2026-10-03):
 
-1. **Three hosts, two platforms** (G6). Windows Ableton and Waveform. The only
-   hard gate still open.
-2. **CPU on the target machine** (G3). 5.03% of a core measured on an M3 Pro;
-   the brief's 8% budget is written for a 2017-era dual-core i5, where the
-   same load would plausibly be 15-20%. Take the measurement during the
-   Windows pass.
-3. **A listening pass.** Nothing in this instrument has been heard since the
-   2026-09-23 re-stage, and four measured-but-unheard changes have landed
-   since. See below.
-4. **FILTER response error at 44.1 vs 96 kHz** (G3). Not measured as a swept
+1. **Three hosts, two platforms** (G6). Windows Ableton and Waveform, now on the v2
+   build. The only hard gate still open.
+2. ~~Owner decision: stereo bass from the reverb~~ - **fixed 2026-10-03** (owner
+   approved): the side high-pass moved to the end of `FxChain`, after the reverb
+   return. `bass_is_mono` gained a REVERB 100% case (failed at -5.3 dB on the old
+   build, passes now); dry path nulls at -147 dBFS at REVERB 0; loudness -0.05 to
+   -0.15 LU. Listening item: the reverb's low end on Sternenzelt, Bergecho and
+   Steinerne Ruhe - the high-pass's phase shift also raised their occasional peaks
+   by up to 1.5 dB (output still >= 4 dB under 0 dBTP).
+3. **The listening pass** - see below; the Sternenzelt items were heard 2026-10-03.
+4. **CPU on the target machine** (G3) - and as worst-case block time (rule 37), not
+   the 5.03% average measured on an M3 Pro. Take it during the Windows pass.
+5. **Rule audits not yet done**: event timing (29 - `LayerBase::startNote`'s comment
+   says a stolen note starting up to one block late is "well under the ~2 ms onset
+   JND"; at 512 samples that is 10.7 ms), control mappings and note hygiene (30), the
+   output limiter and `tanh` as nonlinear models (33).
+6. **FILTER response error at 44.1 vs 96 kHz** (G3). Not measured as a swept
    response; mitigated structurally by every filter being TPT/ZDF.
+7. **CI**: pluginval, the RTSan job and a pinned VST3 SDK commit are not in
+   `build.yml` yet (playbook D.4). Automation *during* playback and state loads
+   mid-stream are not yet covered by any RTSan-checked test.
 
 ## The listening pass, in one place
 
@@ -57,7 +67,7 @@ character decision.
 | From | Item |
 |---|---|
 | EX-001 | The 2 Hz DC blocker's effect on the lowest octave (-0.09 dB at 13.75 Hz, calculated not heard) |
-| EX-002 | Whether to rebalance Sternenzelt into the loudness match, at the cost of some of its purity |
+| EX-002 | ~~Whether to rebalance Sternenzelt into the loudness match~~ - **heard 2026-10-03, owner: "Sternenzelt is ok as is"**; no rebalance |
 | EX-003 | Whether Expanse's alias at MIDI 96-108 is audible at all |
 | G5 | The shimmer now actually transposes - Expanse is substantially brighter than the shipped sound |
 | G5 | Filter Q values sit below the prototype's Butterworth; Expanse's safety lowpass is 2-pole where the prototype's is 1-pole |
@@ -73,7 +83,7 @@ signed off on.
 | ID | Subject | Status |
 |---|---|---|
 | EX-001 | DC offset when the output limiter engages | CLOSED 2026-09-23 - fixed, marginal pass |
-| EX-002 | Sternenzelt ~4.8 LU below the matched bank | OPEN - accepted |
+| EX-002 | Sternenzelt ~4.8 LU below the matched bank | OPEN - accepted; confirmed by ear 2026-10-03 |
 | EX-003 | Expanse aliases at MIDI 96-108 | OPEN - accepted |
 
 ## Sound-design v2 (branch `sound-design-v2`, 2026-09-26)
@@ -87,8 +97,8 @@ that a harness bug had invalidated the G5 numbers (corrected in
 - **G3/G5 reopen for v2** - measured against v1 with `tools/measure/descriptors.py`
   and `register.py` (baselines in `docs/baselines/`), 17/17 tests. The v2 sound
   deliberately diverges from the Faust prototype, which stays the frozen v1 reference.
-- **G6 owed again for v2** - the VST3 builds; Steinberg validator, pluginval and
-  hosts have not been re-run on it.
+- **G6 on v2** - Steinberg validator 47/47 and pluginval L10 re-run 2026-10-03
+  (see G6 above); hosts still owed.
 - **Listening debt** - ten items, listed in `sound-design-v2.md`, with a blind,
   loudness-matched A/B page generated by `tools/listening/make_session.py`.
 
@@ -106,8 +116,36 @@ worktree of `05c3f44`):
 
 | Item | Question |
 |---|---|
-| `preset_klarheit`, `preset_lagerfeuer`, `preset_sternenzelt` | The staggered WIDTH profile against the same width on all four pads: clearer, or just narrower? |
+| `preset_klarheit`, `preset_lagerfeuer` | The staggered WIDTH profile against the same width on all four pads: clearer, or just narrower? |
+| ~~`preset_sternenzelt`~~ | Heard 2026-10-03, owner: "Sternenzelt is ok as is" |
 | `root_chord` | Root at full WIDTH is now 60% of its spread: still enough stereo? |
 | `detune_tight` | DETUNE 0%: tighter and cleaner, or static? |
 | `detune_wide` | DETUNE 100%: lush, or seasick? Clearing responds least (its ensemble dominates its spread) - audible enough there? |
 | GUI | Six macros in the MACROS card: 37 px knobs where the design had 42 px - still comfortable to grab? |
+
+## 2026-10-03 - flaky test fixed, G6 re-run, real-time safety, translation battery
+
+- **`voice_steal_declick` was flaky, not regressed.** It took the worst of six
+  *unseeded* renders per side and failed about 2 runs in 10. Over seeds 1-30 the
+  current build and `05c3f44` are indistinguishable (same three seeds high), so the
+  WIDTH/DETUNE change did not cause it. Now seeded over twelve fixed seeds, comparing
+  medians and worst cases; shown failing on a build with the declick removed
+  (median steal -9.6 dB vs free -17.5 dB) and passing on HEAD.
+- **G6 re-run on v2**: Steinberg validator 47/47 (SDK 3.8.1), pluginval L10 pass.
+- **Rule 35**: `HORIZON_RTSAN` builds the sound tool with RealtimeSanitizer; all 19
+  tests pass clean; `HORIZON_RTSAN_SELFTEST=1` aborts as it must.
+- **Rule 34, translation battery** (`tools/measure/translation.py`, baseline
+  `docs/baselines/translation-v2.json`, 18 presets x 3 seeds): mono sums lose -0.3 to
+  -2.3 LU with no comb (worst band -4.4 dB); phone-speaker loss -0.4 to -3.0 LU, no
+  outlier against the bank; PLR 11.1-12.9 dB, so normalised to -14 LUFS the peaks
+  reach -0.9 to -2.4 dBTP (Bergecho -0.9 and Morgentau -1.0 brush AES TD1008's -1 dBTP,
+  which only matters if someone raises the pad 4 dB with no limiter); AAC and MP3 at
+  128 kbit/s decode at or below -1.0 dBTP with tail residuals near -30 dB. Failed
+  only on stereo bass from the reverb - fixed the same day (item 2); after the fix
+  every preset passes.
+- **Battery redesign, disclosed:** the first version also failed presets whose true
+  peak would exceed -1 dBTP if turned up to -14 LUFS with no limiter (after the fix:
+  Sternenzelt and Steinerne Ruhe +0.4 dBTP). No delivery chain does that; AES TD1008's
+  -1 dBTP applies to a mastered file before encoding. The codec row now masters each
+  render to -1 dBTP and measures the decode (AAC overshoot <= 0.1 dB, MP3 no clipped
+  samples), and the -14 LUFS peak is reported, not judged. PLR 11.4-13.6 dB.

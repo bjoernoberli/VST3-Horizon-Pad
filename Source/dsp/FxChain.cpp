@@ -79,18 +79,8 @@ void FxChain::process (juce::AudioBuffer<float>& buffer, int numSamples)
     // this point - the reverb send is still built from a mono sum (a stereo
     // room send from two already-different channels would just smear the
     // image), but the dry path below preserves left/right exactly as they
-    // arrived rather than rebuilding one from the other.
-    // Mono bass (see kMonoBassHz): high-pass the side channel.
-    if (right != left)
-    {
-        for (int n = 0; n < numSamples; ++n)
-        {
-            const auto mid = 0.5f * (left[n] + right[n]);
-            const auto side = sideHighpass[1].processSample (0, sideHighpass[0].processSample (0, 0.5f * (left[n] - right[n])));
-            left[n]  = mid + side;
-            right[n] = mid - side;
-        }
-    }
+    // arrived rather than rebuilding one from the other. The side channel is
+    // high-passed at the very end (see kMonoBassHz), after the reverb return.
 
     // Split off the bass (see the class comment): low stays dry, high is
     // what the reverb hears and what REVERB crossfades. low + high == dry.
@@ -153,6 +143,24 @@ void FxChain::process (juce::AudioBuffer<float>& buffer, int numSamples)
 
         left[n]  = lowL[n] * 0.85f + (left[n]  - lowL[n]) * dryLevel + wetL[n] * wetLevel;
         right[n] = lowR[n] * 0.85f + (right[n] - lowR[n]) * dryLevel + wetR[n] * wetLevel;
+    }
+
+    // Mono bass (see kMonoBassHz): high-pass the side channel of the finished
+    // mix - dry layers AND reverb return. Done last because the reverb's
+    // decorrelated return rebuilds a side channel from its mono send: with
+    // this filter before the send (until 2026-10-03) the dry bass was mono
+    // but REVERB 100% put the side back at -5.3 dB under the mid below 100 Hz.
+    // Every stage above treats L and R identically and the send only uses the
+    // mid, so the dry path's result is unchanged by the move.
+    if (right != left)
+    {
+        for (int n = 0; n < numSamples; ++n)
+        {
+            const auto mid = 0.5f * (left[n] + right[n]);
+            const auto side = sideHighpass[1].processSample (0, sideHighpass[0].processSample (0, 0.5f * (left[n] - right[n])));
+            left[n]  = mid + side;
+            right[n] = mid - side;
+        }
     }
 }
 
