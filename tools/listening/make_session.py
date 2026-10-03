@@ -86,6 +86,20 @@ ITEMS = [
     ("preset_bergecho", "Preset Bergecho (wide, big reverb)",
      "The room with the bass kept dry: still big? Clearer underneath?",
      ["--preset=Bergecho", "--notes=48,55,60,64", "--hold=7", "--tail=4"]),
+    # Closing the whole listening list (2026-10-04): the reverb's low end after
+    # the side high-pass moved behind the reverb return (2026-10-03), the top
+    # octave Expanse aliased in (EX-003), and the high register of the blend.
+    ("preset_steinerne_ruhe", "Preset Steinerne Ruhe (reverb low end)",
+     "Since 2026-10-03 the reverb no longer puts stereo into the bass. Is the low end of the room "
+     "still warm, and does the image still feel wide?",
+     ["--preset=Steinerne Ruhe", "--notes=48,55,60,64", "--hold=7", "--tail=4"]),
+    ("expanse_top", "Expanse solo, C7-E7-G7 (EX-003 register)",
+     "The top octave, where Expanse aliased in v1 (MIDI 96-108). Any grit, whistle or "
+     "inharmonic tone? Bright is fine; dirty is not.",
+     ["--solo=expanse", "--notes=96,100,103", "--hold=6", "--tail=3"]),
+    ("blend_high", "Default patch, C6 chord",
+     "The whole instrument high up: still one instrument, or shrill and thin?",
+     ["--notes=84,88,91", "--hold=6", "--tail=3"]),
     ("preset_lagerfeuer", "Preset Lagerfeuer (the default sound)",
      "The first thing a user hears.",
      ["--preset=Lagerfeuer", "--notes=48,55,60,64", "--hold=7", "--tail=3"]),

@@ -61,6 +61,27 @@ In rough order of how much each would change (revised 2026-10-03):
 
 ## The listening pass, in one place
 
+**How to run it (one blind session closes the whole list).** Compare v1 - `bf17ee8`,
+the signed-off sound before sound-design v2 - with the current `main`, which carries
+v2, the WIDTH/DETUNE macros and the reverb bass fix. One comparison answers every
+item below, because the changes are cumulative:
+
+```bash
+git worktree add --detach ../hp-v1 bf17ee8
+cmake -S ../hp-v1 -B ../hp-v1/build -G Ninja -DCMAKE_BUILD_TYPE=Release \
+      -DFETCHCONTENT_SOURCE_DIR_JUCE="$PWD/build-release/_deps/juce-src"
+cmake --build ../hp-v1/build --target HorizonPadSoundTool
+cmake --build build-release --target HorizonPadSoundTool
+python3 tools/listening/make_session.py --baseline ../hp-v1/build/HorizonPadSoundTool \
+        --candidate build-release/HorizonPadSoundTool --out build-listening
+open build-listening/index.html
+```
+
+19 items, each loudness-matched to -20 LUFS, "1"/"2"/X randomised per item; export the
+verdicts as JSON at the end and add them here. `expanse_top` is not truly blind: v1's
+Expanse was nearly silent at C7 (+32 dB to match), so judge only whether the current
+one is clean. The GUI item (37 px macro knobs) is judged in the plugin itself.
+
 These are the items that measurement has taken as far as it can. Each is a
 character decision.
 
@@ -168,7 +189,7 @@ measurement (`dspkit.repeat_variation`) is the playbook's new A.6 descriptor.
 
 | # | Idea | From | What it would change | How to judge it |
 |---|---|---|---|---|
-| P1 | **Expanse as a choir with fixed formants.** Expanse is called a choir but has no vowel formants: its one resonant band-pass tracks the note (0.7 above C4, 0.3 below), so its resonance - its apparent size - moves with every note. Real voices keep their formants fixed while the pitch moves. A small fixed vowel-formant bank (not key-tracked) after the stack would keep one "singer" across the keyboard | Formants video | Expanse's character across the range | Spectral-envelope peak vs note (flat = one singer); keyboard span test; blind A/B against `05c3f44`/HEAD |
+| P1 | ~~**Expanse as a choir with fixed formants.**~~ **Declined by the owner, 2026-10-04: "leave as is - it adds more movement across the register, I like it."** The key-tracked resonance stays. Expanse is called a choir but has no vowel formants: its one resonant band-pass tracks the note (0.7 above C4, 0.3 below), so its resonance - its apparent size - moves with every note. Real voices keep their formants fixed while the pitch moves. A small fixed vowel-formant bank (not key-tracked) after the stack would keep one "singer" across the keyboard | Formants video | Expanse's character across the range | Spectral-envelope peak vs note (flat = one singer); keyboard span test; blind A/B against `05c3f44`/HEAD |
 | P2 | **Voice-card variance.** Small fixed per-voice-slot offsets (cutoff, envelope time, tuning) so a chord's notes are never quite identical - what analog polysynths do and their reissues expose as "vintage" | Playbook I.5.1, prompted by the stock-synth fix | Chord texture, very subtly | Chord-note variance; must stay inside level and tuning JNDs |
 | P3 | **A quiet delay** in the FX chain to fill the gaps between chord changes, its feedback carrying the drift | Stock-synth fix, step 4 | Adds an effect; needs a macro or a fixed amount - brief amendment (editing stays shallow) | Gap energy between chords; mix-context listening |
 | P4 | **Tape-style softening** (gentle HF roll-off, slight wow/flutter) on the output | Stock-synth fix, step 2 | The top end and stability of everything | Centroid and modulation spectrum; blind A/B |
