@@ -125,9 +125,10 @@ host's own per-track program list.
 
 ## Factory presets
 
-**18** factory programs (`Source/presets/Presets.cpp`), spanning lush/ambient,
-dark/brooding, bright/shimmering, movement/evolving, minimal/sparse and
-big/cinematic character.
+**22** factory programs (`Source/presets/Presets.cpp`): 18 pads spanning
+lush/ambient, dark/brooding, bright/shimmering, movement/evolving, minimal/sparse and
+big/cinematic character, and since 2026-10-06 four **leads** with fast or medium-fast
+attack and release, for melodies and lines over the pads.
 
 The bank was curated down from an earlier 30 on character rather than on
 level — it held twelve near-duplicates — and then loudness-matched to
@@ -159,6 +160,16 @@ NaN/Inf and peaks above 0 dBFS on an eight-note chord.
 | 16 | Sternenstaub | Shimmering stardust - restless and bright |
 | 17 | Ruhepuls | A slow resting pulse, with subtle motion underneath |
 | 18 | Klarheit | Clear, present and simple - a mix-friendly starting point |
+| 19 | Funkenflug | Lead: bright saw lead - sparks flying, cuts through the band |
+| 20 | Glasperle | Lead: glassy bell lead - plucks bright, then sings softer |
+| 21 | Bergquelle | Lead: round, pure lead like a mountain spring - fast and clear |
+| 22 | Silberpfad | Lead: soft, singing lead to play over the pads |
+
+The leads are loudness-matched to the pad bank's median (-16.9 LUFS on the same
+chord measurement). Onsets at C5: Glasperle 18 ms and Bergquelle 26 ms (fast),
+Funkenflug 74 ms and Silberpfad 164 ms (medium-fast); releases 0.2-0.6 s including
+the room. Details: [`docs/preset-curation-2026-09-23.md`](docs/preset-curation-2026-09-23.md),
+"Addendum: leads".
 
 Each preset's full ten-value parameter set lives in
 [`Source/presets/Presets.cpp`](Source/presets/Presets.cpp).
@@ -248,7 +259,7 @@ Nineteen tests, under 40 seconds, driving the real plugin DSP through
 `HorizonPadSoundTool` ([`tools/tests/dsp_tests.py`](tools/tests/dsp_tests.py)).
 Five assert end-to-end properties — zero reported latency, bit-identical
 renders from a seeded reset, all 36 sample-rate × block-size combinations
-clean, no NaN or denormal storm after 60 s of silence, all 18 factory presets
+clean, no NaN or denormal storm after 60 s of silence, all 22 factory presets
 safe. The rest guard a bug that measurement caught, a layer's defining
 feature, or an instrument-level contract:
 
@@ -460,7 +471,7 @@ Source/
     OctaveShimmer.h                Two-grain +1-octave pitch shifter (Expanse's shimmer send)
     FxChain.{h,cpp}                Shared stereo reverb send
   presets/
-    Presets.{h,cpp}                18 factory programs + parameter IDs
+    Presets.{h,cpp}                22 factory programs (18 pads, 4 leads) + parameter IDs
     UserPresetStore.{h,cpp}        On-disk user preset library (message-thread only)
   gui/
     HorizonLookAndFeel.{h,cpp}     Palette, typography, shared panel/card painters

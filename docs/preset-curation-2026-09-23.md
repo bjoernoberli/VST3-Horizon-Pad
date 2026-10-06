@@ -84,3 +84,41 @@ existing project sounds: `setStateInformation` restores all twelve parameter val
 from the saved APVTS state and never re-applies a preset, and the restored program
 index is clamped to the new range. The only visible effect is that a project saved
 with v1.0.0 may show a different preset *name* as selected than it did before.
+
+## Addendum: leads (2026-10-06)
+
+The owner asked for presets that also cover **lead styles, with fast or medium-fast
+attack and release**. The 18 pads all sit at ATTACK and RELEASE 25-85% - the fastest,
+Frostklang, still takes ~1.6 s to rise on Root - so four leads were added rather than
+existing pads changed. The bank is now 22, above the playbook's 8-20 guideline; the
+pads keep their curation, and the leads are a second job the bank now does.
+
+**How fast each pad can be.** ATTACK and RELEASE below 15% fall exponentially to 1%
+of each layer's designed time. Measured solo at 0% (C5, no reverb), onset to -3 dB of
+the level at 0.3 s: Root 14 ms, Expanse 12 ms, Bloom 16 ms, Clearing 60 ms (its saw
+stack starts slower); releases 16-24 ms to -20 dB. Expanse is 9 dB quieter than Root
+at the same volume.
+
+| # | Preset | Style | Leading layer | ATTACK / RELEASE | Onset C4 / C5 / C6 | Release to -20 dB (with the room) |
+|---|---|---|---|---|---|---|
+| 19 | Funkenflug | Bright saw lead | Clearing, DETUNE 65% | 0% / 5% | 118 / 74 / 22 ms | 0.2-0.4 s |
+| 20 | Glasperle | Glassy bell lead, plucks then sings | Expanse | 0% / 10% | 14 / 18 / 20 ms | ~0.5-0.6 s |
+| 21 | Bergquelle | Round, pure lead | Root + Expanse octave, DETUNE 20% | 3% / 8% | 30 / 26 / 40 ms | ~0.4-0.6 s |
+| 22 | Silberpfad | Soft melodic lead over pads | all four, Bloom's motion | 7% / 10% | 72 / 164 / 118 ms | ~0.4 s |
+
+Leads share narrower WIDTH (15-35%) so a line stays centred, REVERB 20-30%, and
+brighter FILTER (45-70%). **Loudness**: matched to the pad bank's median, -16.9 LUFS,
+with the bank's own method (C3-G3-C4-E4, last 3 s of an 8 s hold, four seeds) - all
+four land at -16.92 to -16.93. Glasperle could not reach it on Expanse alone (full
+volume tops out at -18.9 LUFS, the cause behind Sternenzelt's EX-002), so Root and
+Clearing carry part of it under the glass instead of a second exception.
+
+**Checks**: all 22 presets pass `all_presets_safe`; pluginval L10, the Steinberg
+validator and the RTSan suite pass; the translation battery passes on all four (mono
+loss -0.2 to -1.0 LU, bass mono, codec decodes at or below -0.9 dBTP from a -1 dBTP
+master). Calibration script: kept out of the repo; the numbers above reproduce with
+`tools/measure/descriptors.py --presets` and `tools/measure/translation.py`.
+
+**Not available, by design**: mono mode and glide (the instrument is polyphonic;
+out of scope), and delayed vibrato (the MOD wheel is the only modulation gesture).
+Listening items: in the gate-status listening list.

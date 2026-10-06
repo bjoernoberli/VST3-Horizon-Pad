@@ -101,7 +101,7 @@ ctest --test-dir build-release --output-on-failure
 Nineteen tests (~55 s), `tools/tests/dsp_tests.py`, registered by CMake. They
 drive the real DSP through `HorizonPadSoundTool` rather than unit-testing
 classes: latency, seeded-reset determinism, the 36 sample-rate x block-size
-combinations, 60 s of silence, all 18 presets; regression guards, one per bug
+combinations, 60 s of silence, all 22 presets; regression guards, one per bug
 measurement has caught (`shimmer_octave_present`, `width_is_rate_invariant`,
 `voice_steal_declick`, `reverb_level_flat`); a presence test per defining
 feature (`root_sub_present`, `clearing_ensemble_present`,

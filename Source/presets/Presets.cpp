@@ -235,6 +235,63 @@ static const std::vector<Preset>& buildPresets()
             "Clear, present and simple - a mix-friendly starting point.",
             { 0.383f, 0.313f, 0.244f, 0.209f },
             { 0.35f, 0.40f, 0.55f, 0.25f, 0.50f, 0.50f }
+        },
+
+        // ==================================================================
+        // LEADS (2026-10-06). The four pads with fast or medium-fast attack
+        // and release, for melodies and lines over the pads. ATTACK and
+        // RELEASE sit in the macro's fast zone (below 15%, down to 1% of each
+        // layer's designed time); WIDTH is narrow so a line stays in the
+        // centre; REVERB lower than the pads; DETUNE low where pitch must be
+        // exact (playbook I.7.4). Loudness matched to the bank's median
+        // (-16.9 LUFS, descriptors.py method: C3-G3-C4-E4, last 3 s of an
+        // 8 s hold, four seeds). Measured onset (to -3 dB of the level at
+        // 0.3 s) at C5, and release to -20 dB including the reverb tail.
+        // ==================================================================
+
+        // FUNKENFLUG (flying sparks) - bright saw lead. Clearing's unison
+        // saws lead, DETUNE above the design for a supersaw edge, Root for
+        // body. Medium-fast: 74 ms onset at C5 (Clearing's stack starts
+        // slower than the other pads), 22 ms at C6; release ~0.2 s.
+        {
+            "Funkenflug",
+            "Bright saw lead - sparks flying, cuts through the band.",
+            { 0.281f, 0.514f, 0.187f, 0.047f },
+            { 0.00f, 0.05f, 0.65f, 0.20f, 0.25f, 0.65f }
+        },
+
+        // GLASPERLE (glass bead) - glassy bell lead. Expanse's octave-up
+        // triangles lead and decay to their 40% sustain, so every note
+        // plucks bright and then sings softer. Fast: 18 ms onset at C5;
+        // release ~0.6 s with the shimmer's tail. Root and Clearing under
+        // it are what lets it reach the bank's loudness (Expanse alone tops
+        // out 2 dB short at full volume - Sternenzelt's EX-002 cause).
+        {
+            "Glasperle",
+            "Glassy bell lead - plucks bright, then sings softer.",
+            { 0.353f, 0.265f, 0.882f, 0.132f },
+            { 0.00f, 0.10f, 0.70f, 0.30f, 0.35f, 0.30f }
+        },
+
+        // BERGQUELLE (mountain spring) - round, pure lead. Root's triangles
+        // with Expanse an octave up for sparkle; DETUNE low for exact pitch,
+        // nearly mono. Fast: 26 ms onset at C5; Root's breathing filter
+        // opens over the held note; release ~0.5 s with the room.
+        {
+            "Bergquelle",
+            "Round, pure lead like a mountain spring - fast and clear.",
+            { 0.473f, 0.036f, 0.255f, 0.000f },
+            { 0.03f, 0.08f, 0.45f, 0.25f, 0.15f, 0.20f }
+        },
+
+        // SILBERPFAD (silver path) - soft melodic lead to play over the pads.
+        // All four layers, Bloom adding gentle motion. Medium-fast: 72-164 ms
+        // onset, release ~0.4 s.
+        {
+            "Silberpfad",
+            "Soft, singing lead to play over the pads.",
+            { 0.377f, 0.330f, 0.235f, 0.235f },
+            { 0.07f, 0.10f, 0.55f, 0.30f, 0.30f, 0.40f }
         }
     };
 

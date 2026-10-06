@@ -172,6 +172,19 @@ worktree of `05c3f44`):
   render to -1 dBTP and measures the decode (AAC overshoot <= 0.1 dB, MP3 no clipped
   samples), and the -14 LUFS peak is reported, not judged. PLR 11.4-13.6 dB.
 
+## Lead presets (2026-10-06) - listening items
+
+Four leads added (bank 18 -> 22; `docs/preset-curation-2026-09-23.md`, "Addendum:
+leads"). Judged in the plugin, played - there is no v1 to A/B them against:
+
+| Preset | Question |
+|---|---|
+| Funkenflug | Bright saw lead: does it cut through a pad without harshness? Is the 74 ms onset at C5 fast enough, or should Root/Bloom carry more of the front? |
+| Glasperle | Glassy pluck-then-sing: is the decay to Expanse's 40% sustain musical on held notes? Is the shimmer tail too long for fast lines? |
+| Bergquelle | Round and pure: exact enough in pitch (DETUNE 20%)? Root's filter keeps opening on long notes - nice swell, or drift? |
+| Silberpfad | Soft lead over a pad (try it over Lagerfeuer): does it sit above or blur into the pad? |
+| All four | Release: with the room they ring 0.2-0.6 s - right for lines, or should RELEASE be shorter? Velocity response on a lead |
+
 ## Checked against two practitioner videos (2026-10-04) - proposals for the owner
 
 Sage Audio, "Fixing the 3 WORST Sounds in Modern Music Production" and "Formant
