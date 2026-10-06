@@ -246,6 +246,18 @@ def step_rtsan(a, logs):
     tool = ROOT / "build-rtsan" / "HorizonPadSoundTool"
     if not tool.exists():
         raise Unavailable("no build-rtsan/HorizonPadSoundTool (recipe in CLAUDE.md)")
+    # A stale RTSan build tests old code (2026-10-07: it still had the previous
+    # preset bank). Rebuild it - or, with --no-build, refuse to call it a pass.
+    sources = [f for d in ("Source", "tools/sound_tool") for f in (ROOT / d).rglob("*")
+               if f.suffix in (".cpp", ".h", ".hpp")] + [ROOT / "CMakeLists.txt"]
+    newest = max(f.stat().st_mtime for f in sources)
+    if newest > tool.stat().st_mtime:                 # timestamps: ninja -n stops at the CMake re-run
+        if a.no_build:
+            return False, "build-rtsan is out of date with the sources - rebuild it (or drop --no-build)"
+        code, _ = run(["cmake", "--build", ROOT / "build-rtsan", "--target", "HorizonPadSoundTool"],
+                      logs / "rtsan-build.log", timeout=3600)
+        if code != 0:
+            return False, "rebuilding build-rtsan failed - see rtsan-build.log"
     env = dict(os.environ)
     sym = "/opt/homebrew/opt/llvm/bin/llvm-symbolizer"
     if Path(sym).exists():

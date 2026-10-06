@@ -85,7 +85,7 @@ from the saved APVTS state and never re-applies a preset, and the restored progr
 index is clamped to the new range. The only visible effect is that a project saved
 with v1.0.0 may show a different preset *name* as selected than it did before.
 
-## Addendum: leads (2026-10-06)
+## Addendum: leads (2026-10-06) - superseded by the 2026-10-07 reshape below
 
 The owner asked for presets that also cover **lead styles, with fast or medium-fast
 attack and release**. The 18 pads all sit at ATTACK and RELEASE 25-85% - the fastest,
@@ -122,3 +122,78 @@ master). Calibration script: kept out of the repo; the numbers above reproduce w
 **Not available, by design**: mono mode and glide (the instrument is polyphonic;
 out of scope), and delayed vibrato (the MOD wheel is the only modulation gesture).
 Listening items: in the gate-status listening list.
+
+## 2026-10-07: 17 presets in three families
+
+**Owner feedback on the leads** (after playing them): Funkenflug "nice ... sounds very
+good"; Glasperle "starts ok, but gets too bright fast"; Bergquelle "hurts when
+holding"; and generally, "played in lower register [the plugin] sounds acceptably
+good - not the best choice for bass or sub-bass, but still musical for that type of
+instrument". Asked for: 17 presets, some pads kept, some changed to fill the gap
+between pads and leads, the most diverse five first with Funkenflug among them, the
+rest as variants.
+
+**What the complaints were, measured.** Neither preset grew brighter on a held note
+(their spectral centroids fall), so brightness growth was not it:
+
+- *Glasperle* - on held upper notes its sound became dominated by one near-pure
+  partial, Expanse's octave-up fundamental at 1.5-2.6 kHz, where the ear is most
+  sensitive: at G5 it rose from -13 to **-5 dB of the whole sound** within 3 s as
+  everything around it decayed. Funkenflug and Silberpfad, judged fine, peak at about
+  -19 dB. Lowering FILTER made it worse (-10.1 dB: it removed the partials around the
+  tone). Fixed by *surrounding* the tone: Expanse 0.88 -> 0.50, Bloom and Clearing up,
+  DETUNE 60% so Expanse's three triangles beat instead of fusing, FILTER 60%: worst
+  partial **-16.6 dB**, no held-note swell. Onset unchanged (15-25 ms).
+- *Bergquelle* - held notes **swelled +4 to +5 dB within 2-3 s**: Root's breathing
+  filter, the layer the preset was built on (the swell stays with Expanse removed).
+  A Root-led pure lead cannot avoid it, so Bergquelle was retired rather than patched.
+
+**Retired (5)**, by nearest-neighbour distance in the curation space (layer balance,
+width, attack, release, filter, reverb, measured centroid) and by role:
+
+| Retired | Nearest | Distance | Why |
+|---|---|---|---|
+| Lichtnebel | Morgentau | 1.60 | The hub of the bank's tightest cluster - nearest neighbour of five other presets |
+| Sternenstaub | Goldstaub | 1.65 | Same bright, wide, Expanse/Bloom patch |
+| Morgentau | Lichtnebel | 1.60 | Bright-airy is still covered by Goldstaub, Sternenzelt and Alpengluehen |
+| Tiefensog | Lagerfeuer | 1.81 | Dark and close is covered by Lagerfeuer and Mitternachtsblau |
+| Bergquelle | - | - | Root's swell on held notes (above) |
+
+**Converted to IN-BETWEEN (5)**: the pads already leaning fast or present - Frostklang,
+Kupferglanz, Klarheit, Talwind, Sturmfront. Same layer balance, ATTACK 8-12% and
+RELEASE 13-16% (the macro's fast zone), descriptions updated:
+
+| Preset | Onset C4 / C5 | Release (with the room) | Worst 1.5-6 kHz partial | Held-note swell |
+|---|---|---|---|---|
+| Frostklang | 245 / 160 ms | 1.1 / 0.9 s | -16.6 dB | +0.8 dB |
+| Kupferglanz | 290 / 195 ms | 1.2 / 1.1 s | -17.7 dB | +0.1 dB |
+| Klarheit | 245 / 165 ms | 1.1 / 0.8 s | -19.4 dB | +1.5 dB |
+| Talwind | 335 / 255 ms | 1.4 / 1.2 s | -17.1 dB | +2.3 dB |
+| Sturmfront | 450 / 300 ms | 1.4 / 1.4 s | -16.9 dB | +0.6 dB |
+
+So the families separate cleanly: leads onset 15-165 ms and release 0.2-0.6 s,
+in-between 160-450 ms and 0.8-1.4 s, pads from ~1.5 s up.
+
+**Kept as is (9 pads)**: Lagerfeuer, Mitternachtsblau, Steinerne Ruhe, Ruhepuls,
+Daemmerlicht, Alpengluehen, Goldstaub, Sternenzelt, Bergecho. **Leads (3)**: Funkenflug,
+Glasperle (fixed), Silberpfad.
+
+**Order.** Lagerfeuer stays first - it is the plugin's default sound (the parameter
+defaults equal it). Funkenflug is fixed in the top five (owner). The other three were
+chosen to maximise the smallest distance among the five, with every family present and
+no family more than twice; unconstrained, the search picked two vast reverb pads
+(Sternenzelt and Bergecho), different in numbers but close relatives by ear. Result,
+smallest distance among the five 3.29 (unconstrained 3.36):
+
+1. Lagerfeuer (pad) - 2. Funkenflug (lead) - 3. Alpengluehen (pad) - 4. Frostklang
+(in-between) - 5. Talwind (in-between)
+
+Every other preset follows as a variant of the first-five sound it is nearest to,
+nearest first: Lagerfeuer -> Steinerne Ruhe, Mitternachtsblau; Funkenflug ->
+Kupferglanz; Alpengluehen -> Daemmerlicht, Bergecho, Sternenzelt; Frostklang ->
+Glasperle, Klarheit, Silberpfad, Goldstaub; Talwind -> Sturmfront, Ruhepuls.
+
+**Loudness** (`descriptors.py --presets`, four seeds): median -16.89 LUFS; 16 of 17
+within +/-0.9 LU (-17.24 to -16.02); Sternenzelt -18.90 (EX-002, accepted by ear on
+2026-10-03).
+

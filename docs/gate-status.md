@@ -138,8 +138,9 @@ worktree of `05c3f44`):
 
 | Item | Question |
 |---|---|
-| `preset_klarheit`, `preset_lagerfeuer` | The staggered WIDTH profile against the same width on all four pads: clearer, or just narrower? |
+| `preset_daemmerlicht`, `preset_lagerfeuer` | The staggered WIDTH profile against the same width on all four pads: clearer, or just narrower? |
 | ~~`preset_sternenzelt`~~ | Heard 2026-10-03, owner: "Sternenzelt is ok as is" |
+| `preset_klarheit` -> `preset_daemmerlicht` | Klarheit became an in-between preset on 2026-10-07; the WIDTH-profile question moved to Daemmerlicht, an unchanged pad |
 | `root_chord` | Root at full WIDTH is now 60% of its spread: still enough stereo? |
 | `detune_tight` | DETUNE 0%: tighter and cleaner, or static? |
 | `detune_wide` | DETUNE 100%: lush, or seasick? Clearing responds least (its ensemble dominates its spread) - audible enough there? |
@@ -172,18 +173,24 @@ worktree of `05c3f44`):
   render to -1 dBTP and measures the decode (AAC overshoot <= 0.1 dB, MP3 no clipped
   samples), and the -14 LUFS peak is reported, not judged. PLR 11.4-13.6 dB.
 
-## Lead presets (2026-10-06) - listening items
+## Presets: three families, 17 (2026-10-07)
 
-Four leads added (bank 18 -> 22; `docs/preset-curation-2026-09-23.md`, "Addendum:
-leads"). Judged in the plugin, played - there is no v1 to A/B them against:
+Owner's verdict on the first leads: Funkenflug liked ("sounds very good"), Glasperle
+"too bright fast", Bergquelle "hurts when holding" - both measured and dealt with
+(`docs/preset-curation-2026-09-23.md`, 2026-10-07 section): Glasperle's dominant
+octave partial -12.4 -> -16.6 dB; Bergquelle retired (Root's +4-5 dB swell on held
+notes). The bank is now 9 pads, 5 in-between, 3 leads, the five most different first.
+Low register, owner: "acceptably good - not the best choice for bass or sub-bass, but
+still musical for that type of instrument" (closes v2 listening item 8).
+
+Listening items - play them in the plugin:
 
 | Preset | Question |
 |---|---|
-| Funkenflug | Bright saw lead: does it cut through a pad without harshness? Is the 74 ms onset at C5 fast enough, or should Root/Bloom carry more of the front? |
-| Glasperle | Glassy pluck-then-sing: is the decay to Expanse's 40% sustain musical on held notes? Is the shimmer tail too long for fast lines? |
-| Bergquelle | Round and pure: exact enough in pitch (DETUNE 20%)? Root's filter keeps opening on long notes - nice swell, or drift? |
-| Silberpfad | Soft lead over a pad (try it over Lagerfeuer): does it sit above or blur into the pad? |
-| All four | Release: with the room they ring 0.2-0.6 s - right for lines, or should RELEASE be shorter? Velocity response on a lead |
+| Glasperle | Still glass, and no longer too bright on held high notes? |
+| Silberpfad | Sits above a pad (try it over Lagerfeuer), or blurs into it? |
+| Frostklang, Kupferglanz, Klarheit, Talwind, Sturmfront | In-between: does each still feel like itself, now speaking in 0.2-0.45 s? Release ~1 s - right, or too long for rhythm parts? |
+| The first five | Lagerfeuer, Funkenflug, Alpengluehen, Frostklang, Talwind: different enough, and a good first impression? |
 
 ## Checked against two practitioner videos (2026-10-04) - proposals for the owner
 

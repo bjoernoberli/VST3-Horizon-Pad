@@ -125,51 +125,38 @@ host's own per-track program list.
 
 ## Factory presets
 
-**22** factory programs (`Source/presets/Presets.cpp`): 18 pads spanning
-lush/ambient, dark/brooding, bright/shimmering, movement/evolving, minimal/sparse and
-big/cinematic character, and since 2026-10-06 four **leads** with fast or medium-fast
-attack and release, for melodies and lines over the pads.
+**17** factory programs (`Source/presets/Presets.cpp`) in three families: **pads**
+(slow, the original design), **in-between** (pads that speak in 0.2-0.45 s) and
+**leads** (onset 15-165 ms, release 0.2-0.6 s with the room). The first five are the
+most different sounds in the bank - one or more from every family - and every later
+preset is a variant of the first-five sound it is nearest to (2026-10-07; method in
+[`docs/preset-curation-2026-09-23.md`](docs/preset-curation-2026-09-23.md)).
 
-The bank was curated down from an earlier 30 on character rather than on
-level — it held twelve near-duplicates — and then loudness-matched to
-−18.0 LUFS. 17 of the 18 sit within ±1 LU of that; the exception is recorded
-as EX-002 in [`docs/exceptions.md`](docs/exceptions.md). Method and the
-survivor covering each cut are in
-[`docs/preset-curation-2026-09-23.md`](docs/preset-curation-2026-09-23.md).
+All are loudness-matched to -16.9 LUFS (the bank median on the same chord
+measurement): 16 of 17 within +/-0.9 LU; Sternenzelt sits ~2 LU lower, an accepted
+exception confirmed by ear (EX-002 in [`docs/exceptions.md`](docs/exceptions.md)).
+Every preset is checked by the test suite (`all_presets_safe`) for clipping, NaN/Inf
+and peaks above 0 dBFS on an eight-note chord.
 
-Every preset is checked by the test suite (`all_presets_safe`) for clipping,
-NaN/Inf and peaks above 0 dBFS on an eight-note chord.
-
-| # | Preset | Character |
-|---|--------|-----------|
-| 1 | Lagerfeuer | Warm, close and grounded - the campfire pad |
-| 2 | Alpenglühen | Warm light spreading wide across the peaks |
-| 3 | Morgentau | Fresh and delicate, open but soft |
-| 4 | Sternenzelt | Vast and celestial - Expanse fills the whole sky |
-| 5 | Talwind | Movement and breeze - Bloom leads the way |
-| 6 | Mitternachtsblau | A deep midnight drone, barely lit |
-| 7 | Bergecho | A vast mountain echo - huge, cinematic space |
-| 8 | Steinerne Ruhe | Stillness carved in stone - minimal, slow and sparse |
-| 9 | Goldstaub | Golden dust catching the light - bright and airy |
-| 10 | Tiefensog | A deep pull from below - sub-heavy and dark |
-| 11 | Lichtnebel | Soft, bright fog - gentle and balanced |
-| 12 | Sturmfront | A dramatic storm front rolling in - big and wide |
-| 13 | Dämmerlicht | Warm dusk light, gently settling |
-| 14 | Frostklang | Cold, bright and sharp - a frozen ring |
-| 15 | Kupferglanz | Warm copper shine - mid-bright and present |
-| 16 | Sternenstaub | Shimmering stardust - restless and bright |
-| 17 | Ruhepuls | A slow resting pulse, with subtle motion underneath |
-| 18 | Klarheit | Clear, present and simple - a mix-friendly starting point |
-| 19 | Funkenflug | Lead: bright saw lead - sparks flying, cuts through the band |
-| 20 | Glasperle | Lead: glassy bell lead - plucks bright, then sings softer |
-| 21 | Bergquelle | Lead: round, pure lead like a mountain spring - fast and clear |
-| 22 | Silberpfad | Lead: soft, singing lead to play over the pads |
-
-The leads are loudness-matched to the pad bank's median (-16.9 LUFS on the same
-chord measurement). Onsets at C5: Glasperle 18 ms and Bergquelle 26 ms (fast),
-Funkenflug 74 ms and Silberpfad 164 ms (medium-fast); releases 0.2-0.6 s including
-the room. Details: [`docs/preset-curation-2026-09-23.md`](docs/preset-curation-2026-09-23.md),
-"Addendum: leads".
+| # | Preset | Family | Character |
+|---|--------|--------|-----------|
+| 1 | Lagerfeuer | pad | Warm, close and grounded - the campfire pad |
+| 2 | Funkenflug | lead | Bright saw lead - sparks flying, cuts through the band |
+| 3 | Alpenglühen | pad | Warm light spreading wide across the peaks |
+| 4 | Frostklang | in-between | Cold, bright and sharp - a frozen ring that speaks at once |
+| 5 | Talwind | in-between | Movement and breeze - a moving synth that answers in a breath |
+| 6 | Steinerne Ruhe | pad | Stillness carved in stone - minimal, slow and sparse *(variant of 1)* |
+| 7 | Mitternachtsblau | pad | A deep midnight drone, barely lit *(variant of 1)* |
+| 8 | Kupferglanz | in-between | Warm copper shine - a present poly synth that speaks quickly *(variant of 2)* |
+| 9 | Dämmerlicht | pad | Warm dusk light, gently settling *(variant of 3)* |
+| 10 | Bergecho | pad | A vast mountain echo - huge, cinematic space *(variant of 3)* |
+| 11 | Sternenzelt | pad | Vast and celestial - Expanse fills the whole sky *(variant of 3)* |
+| 12 | Glasperle | lead | Glassy bell lead - plucks bright, then sings softer *(variant of 4)* |
+| 13 | Klarheit | in-between | Clear, present and simple - quick enough for rhythm parts *(variant of 4)* |
+| 14 | Silberpfad | lead | Soft, singing lead to play over the pads *(variant of 4)* |
+| 15 | Goldstaub | pad | Golden dust catching the light - bright and airy *(variant of 4)* |
+| 16 | Sturmfront | in-between | A dramatic storm front - big, wide chords that hit sooner *(variant of 5)* |
+| 17 | Ruhepuls | pad | A slow resting pulse, with subtle motion underneath *(variant of 5)* |
 
 Each preset's full ten-value parameter set lives in
 [`Source/presets/Presets.cpp`](Source/presets/Presets.cpp).
@@ -259,7 +246,7 @@ Nineteen tests, under 40 seconds, driving the real plugin DSP through
 `HorizonPadSoundTool` ([`tools/tests/dsp_tests.py`](tools/tests/dsp_tests.py)).
 Five assert end-to-end properties — zero reported latency, bit-identical
 renders from a seeded reset, all 36 sample-rate × block-size combinations
-clean, no NaN or denormal storm after 60 s of silence, all 22 factory presets
+clean, no NaN or denormal storm after 60 s of silence, all 17 factory presets
 safe. The rest guard a bug that measurement caught, a layer's defining
 feature, or an instrument-level contract:
 
@@ -471,7 +458,7 @@ Source/
     OctaveShimmer.h                Two-grain +1-octave pitch shifter (Expanse's shimmer send)
     FxChain.{h,cpp}                Shared stereo reverb send
   presets/
-    Presets.{h,cpp}                22 factory programs (18 pads, 4 leads) + parameter IDs
+    Presets.{h,cpp}                17 factory programs (9 pads, 5 in-between, 3 leads) + parameter IDs
     UserPresetStore.{h,cpp}        On-disk user preset library (message-thread only)
   gui/
     HorizonLookAndFeel.{h,cpp}     Palette, typography, shared panel/card painters

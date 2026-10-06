@@ -195,6 +195,8 @@ heard.
 7. REVERB with the bass kept dry: does the room still feel big?
 8. The low register: C1-C3 single notes and a C2 open fifth / close triad on every
    pad - is it music now?
+   *Heard 2026-10-07, owner: "acceptably good - not the best choice for bass or
+   sub-bass, but still musical for that type of instrument."*
 9. Expanse's register pinning: a bass line C2-G2-C3 - does the "air above" follow
    naturally, or is the octave crossfade audible?
 10. Clearing's top octaves (C5-C7), now louder than its middle.

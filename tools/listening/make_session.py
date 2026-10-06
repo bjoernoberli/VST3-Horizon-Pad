@@ -107,9 +107,12 @@ ITEMS = [
     # date the presets compare the same width on all four pads with the
     # staggered profile; the DETUNE items compare an extreme with the
     # designed detune.
-    ("preset_klarheit", "Preset Klarheit, WIDTH 50%",
+    # Klarheit became an in-between preset on 2026-10-07, so it no longer
+    # compares like with like against v1; Daemmerlicht is an unchanged pad at
+    # a similar WIDTH.
+    ("preset_daemmerlicht", "Preset D\u00e4mmerlicht, WIDTH 55%",
      "The profile's biggest change: Root now near the centre, the air still open. Clearer, or narrower?",
-     ["--preset=Klarheit", "--notes=48,55,60,64", "--hold=7", "--tail=3"]),
+     ["--preset=D\u00e4mmerlicht", "--notes=48,55,60,64", "--hold=7", "--tail=3"]),
     ("preset_sternenzelt", "Preset Sternenzelt, WIDTH 100%",
      "Full width, with Root and Bloom held back by their profiles. Still vast?",
      ["--preset=Sternenzelt", "--notes=48,55,60,64", "--hold=7", "--tail=4"]),
