@@ -261,7 +261,7 @@ jobs:
         shell: bash
         run: >
           python tools/validate/validate.py --only validator,pluginval --no-build
-          --plugin "dist/Horizon Pad.vst3" --fetch-pluginval --out validation-logs
+          --plugin "dist/Horizon Pad.vst3" --fetch-pluginval --strict --out validation-logs
 
       - name: Upload validation logs
         if: always()

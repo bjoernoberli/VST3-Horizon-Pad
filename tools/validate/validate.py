@@ -28,8 +28,9 @@ then in build-validators/; --fetch-pluginval downloads the pinned release there.
 The Steinberg validator is built from the pinned VST3 SDK commit into
 build-validators/ on first use (without full Xcode, -DXCODE_VERSION is passed).
 
-Exit codes: 0 all passed; 1 something failed; 77 a requested step could not
-run (missing plugin bundle or tool) - CTest reports that as skipped.
+Exit codes: 0 all passed; 1 something failed (with --strict, also a skipped
+step); 77 every requested step was skipped (missing plugin bundle or tool) -
+CTest reports that as skipped. A mix of passes and skips is 0 without --strict.
 """
 import argparse
 import json
@@ -275,6 +276,8 @@ def main():
     ap.add_argument("--timeout-ms", type=int, default=60000, help="pluginval: max silence per test")
     ap.add_argument("--step-timeout", type=int, default=3600, help="seconds per pluginval run")
     ap.add_argument("--out", help="log folder (default build-validation/<timestamp>)")
+    ap.add_argument("--strict", action="store_true",
+                    help="a skipped step is a failure (CI: a missing tool must not pass silently)")
     a = ap.parse_args()
 
     prof = PROFILES[a.profile]
@@ -306,10 +309,12 @@ def main():
 
     summary = {"profile": a.profile, "plugin": str(a.plugin), "platform": platform.platform(),
                "pins": PINS, "seed": a.seed, "steps": results,
-               "result": "FAIL" if any_fail else ("SKIP" if any_skip and len(steps) == 1 else "PASS")}
+               "result": "FAIL" if any_fail or (a.strict and any_skip)
+                         else ("SKIP" if any_skip and all(r["status"] == "SKIP" for r in results)
+                               else "PASS")}
     (logs / "summary.json").write_text(json.dumps(summary, indent=1))
     print("[validate] %s - summary in %s" % (summary["result"], logs / "summary.json"))
-    if any_fail:
+    if summary["result"] == "FAIL":
         sys.exit(1)
     if summary["result"] == "SKIP":
         sys.exit(SKIP)
