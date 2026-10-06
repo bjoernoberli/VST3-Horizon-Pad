@@ -1,0 +1,8 @@
+{
+  "_comment": "Pinned validator versions, read by tools/validate/validate.py and .github/workflows/build.yml. Bump deliberately and re-run the full profile.",
+  "pluginval": "v1.0.4",
+  "vst3sdk": {
+    "commit": "3cdf9ca5d1f5b1b21e0a86832aa4abe55607bd96",
+    "version": "3.8.1"
+  }
+}

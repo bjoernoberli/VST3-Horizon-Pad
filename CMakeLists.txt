@@ -309,3 +309,27 @@ else()
         set_tests_properties(${test_name} PROPERTIES TIMEOUT 900)
     endforeach()
 endif()
+
+# Host-compatibility validation (playbook G6, D.3-D.5): the Steinberg validator and
+# pluginval at strictness 10, run on the built VST3 by tools/validate/validate.py,
+# which builds the validator from the commit pinned in tools/validate/versions.json.
+# Labelled "validation" so the fast loop can leave them out:
+#   ctest -LE validation          DSP tests only (~1 min)
+#   ctest -L validation           validators only
+#   ctest                         everything
+# Exit code 77 (no bundle built, or pluginval not installed) is reported as skipped;
+# `python3 tools/validate/validate.py --fetch-pluginval` downloads the pinned pluginval.
+if (Python3_Interpreter_FOUND)
+    foreach(step validator pluginval)
+        add_test(NAME ${step}_vst3
+                 COMMAND "${Python3_EXECUTABLE}"
+                         "${CMAKE_CURRENT_SOURCE_DIR}/tools/validate/validate.py"
+                         --only ${step} --no-build
+                         --plugin "$<TARGET_FILE_DIR:HorizonPad_VST3>"
+                         --out "${CMAKE_CURRENT_BINARY_DIR}/validation/${step}")
+        set_tests_properties(${step}_vst3 PROPERTIES
+                             LABELS validation
+                             SKIP_RETURN_CODE 77
+                             TIMEOUT 3600)
+    endforeach()
+endif()

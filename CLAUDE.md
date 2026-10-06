@@ -73,8 +73,22 @@ cmake --build vst3sdk-build --target validator
 ./vst3sdk-build/bin/Release/validator "build/HorizonPad_artefacts/Release/VST3/Horizon Pad.vst3"
 ```
 
-`pluginval --strictness-level 10 --validate "path/to/Horizon Pad.vst3"` is also
-recommended if installed. Known gap: not re-validated against either tool
+**One command for the whole host-compatibility run** (playbook G6, D.5.7):
+
+```bash
+python3 tools/validate/validate.py                   # full: build, DSP tests, Steinberg validator,
+                                                     # pluginval L10 at 6 rates x 7 blocks, RTSan suite
+python3 tools/validate/validate.py --profile quick   # L5, for any host-facing change
+python3 tools/validate/validate.py --profile soak    # nightly/Tier F: L10 x5 randomised, fresh logged seed
+python3 tools/validate/validate.py --only pluginval --seed 0x...   # reproduce a fuzz failure
+ctest --test-dir build-release -L validation         # the validators as CTest tests
+```
+
+Logs and `summary.json` land in `build-validation/<timestamp>/`. The Steinberg
+validator is built once from the VST3 SDK commit pinned in
+`tools/validate/versions.json` (with the Command Line Tools only, the script sets
+`XCODE_VERSION`); pluginval is found in /Applications or fetched with
+`--fetch-pluginval`. First full run 2026-10-06: all pass in ~2 min (pluginval L10 16 s). Known gap: not re-validated against either tool
 since the four-layer/12-parameter rewrite (see README "Known gaps").
 
 ### Tests
@@ -143,9 +157,11 @@ python3 tools/tests/dsp_tests.py --tool ./build-rtsan/HorizonPadSoundTool       
 `.github/workflows/build.yml`: builds VST3 on macOS (universal binary) +
 Windows (x64), packages an unsigned (ad-hoc signed) macOS `.pkg` and a Windows
 installer folder, zips both into one cross-platform release artifact, runs the
-DSP test suite, and runs the Steinberg validator as a **hard gate** (promoted from
-non-blocking on 2026-09-24). Not yet in CI (playbook D.4): pluginval, a sanitizer
-(RTSan) job, a pinned VST3 SDK commit for the validator build.
+DSP test suite (`ctest -LE validation`), and validates the **downloaded artefacts** on
+macOS and Windows with `tools/validate/validate.py`: the Steinberg validator from the
+pinned SDK commit and pluginval L10 at all six sample rates - both blocking (G6),
+logs uploaded per platform. Not yet in CI: the RTSan job (needs Homebrew LLVM and the
+JUCE workarounds above).
 
 ## Architecture
 

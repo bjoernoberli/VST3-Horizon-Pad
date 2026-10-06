@@ -22,7 +22,7 @@ G0 and doing every gate the project skipped as a sketch.
 | Requirement | Status |
 |---|---|
 | Steinberg validator exit 0 | **PASS** - 47/47, 2026-09-24 (v1). Re-run on v2 (`5056369`) 2026-10-03: **47/47**, VST3 SDK 3.8.1 (`3cdf9ca`) |
-| pluginval strictness 10 | **PASS** - 2026-09-24 (v1). Re-run on v2 2026-10-03: **PASS**, pluginval 1.0.4, in-process (1.0.4 has no `--rtcheck`) |
+| pluginval strictness 10 | **PASS** - 2026-09-24 (v1). Re-run on v2 2026-10-03: **PASS**. Since 2026-10-06 `tools/validate/validate.py` runs it at all six sample rates x seven block sizes with a logged seed (25 test groups incl. parameter fuzzing and thread-safety, 16 s), and CI runs it on the downloaded macOS and Windows artefacts |
 | CTest suite green | **PASS** - 8/8 (v1, 2026-09-24); **19/19 in 55 s** on v2, 2026-10-03 |
 | Real-time safety (rule 35) | **PASS** on v2, 2026-10-03: all 19 tests clean under RealtimeSanitizer (`build-rtsan`, see CLAUDE.md); self-test proves the check fires |
 | Three hosts, two platforms | **1 of 3.** Ableton Live on macOS confirmed by the owner. Windows Ableton and Waveform outstanding. |
@@ -55,8 +55,9 @@ In rough order of how much each would change (revised 2026-10-03):
    output limiter and `tanh` as nonlinear models (33).
 6. **FILTER response error at 44.1 vs 96 kHz** (G3). Not measured as a swept
    response; mitigated structurally by every filter being TPT/ZDF.
-7. **CI**: pluginval, the RTSan job and a pinned VST3 SDK commit are not in
-   `build.yml` yet (playbook D.4). Automation *during* playback and state loads
+7. **CI**: ~~pluginval and a pinned VST3 SDK commit~~ - done 2026-10-06 (validation
+   matrix on the downloaded artefacts, macOS and Windows). The RTSan job is still local
+   only (`validate.py` runs it when `build-rtsan` exists). Automation *during* playback and state loads
    mid-stream are not yet covered by any RTSan-checked test.
 
 ## The listening pass, in one place
