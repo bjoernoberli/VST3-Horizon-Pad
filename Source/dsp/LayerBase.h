@@ -49,7 +49,8 @@ namespace horizon
     layer turns it into its own width through a fixed profile
     (widthProfile(): where on the knob the layer starts to open, and how wide
     it gets), so the shape across the pads changes as the knob turns - the
-    air opens first, the foundation last and least. Until 2026-10-02 there
+    air opens first, the foundation last; since 2026-10-07 every pad reaches
+    its full spread at WIDTH 100% (Root stopped at 60%, Bloom at 90%). Until 2026-10-02 there
     was a WIDTH knob per pad, and every factory preset set all four to the
     same value. Since sound-design v2 (2026-09-26) the width itself is built by spreading
     each voice's detuned oscillators across the stereo field (panGains()),
@@ -448,13 +449,15 @@ protected:
         return std::pow (frequencyHz / kKeyTrackAnchorHz, amount);
     }
 
-    /** Key tracking with a different amount below and above C4. Below C4 the
-        layers track fully (amount 1): the note keeps the harmonic count it
-        was voiced with at C4 instead of gaining harmonics as it falls. A
-        fixed-Hz filter at C2 lets through twice the harmonics it does at C4,
-        and below ~C3 those harmonics sit closer together than a critical
-        band, which is roughness - measured 6-40x the C4 figure on single
-        notes (tools/measure/register.py, review of 2026-09-26). */
+    /** Key tracking with a different amount below and above C4. Below C4 a
+        fixed-Hz filter lets through more harmonics as the note falls - twice
+        as many at C2 as at C4 - and below ~C3 those harmonics sit closer
+        together than a critical band, which is roughness: measured 6-40x the
+        C4 figure on single notes (tools/measure/register.py, review of
+        2026-09-26). v2 tracked fully below C4 (amount 0.8-1.0); the owner's
+        blind A/B of 2026-10-06 preferred v1's brighter low chords, so since
+        2026-10-07 Root and Bloom track 0.5 and Clearing 0.75 below C4 - as far
+        towards v1 as the roughness limits allow (low_register_stays_musical). */
     static float keyTrack (float frequencyHz, float amountBelow, float amountAbove) noexcept
     {
         return keyTrack (frequencyHz, frequencyHz < kKeyTrackAnchorHz ? amountBelow : amountAbove);

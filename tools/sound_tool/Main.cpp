@@ -1120,6 +1120,7 @@ static int runTool (int argc, char* argv[])
 
     // ---- Build the processor -------------------------------------------
     HorizonPadAudioProcessor processor;
+    const auto startupProgram = processor.getProgramName (processor.getCurrentProgram());  // before any preset/param
     processor.prepareToPlay (sampleRate, blockSize);
 
     // Oscillator start phases are randomised per voice on purpose, so renders
@@ -1445,6 +1446,7 @@ static int runTool (int argc, char* argv[])
                 params->setProperty (alias, p->getValue());
 
         root->setProperty ("activeParams", juce::var (params));
+        root->setProperty ("startupProgram", startupProgram);   // the program the plugin opens on
     }
 
     {

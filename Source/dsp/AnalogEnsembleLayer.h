@@ -64,7 +64,11 @@ private:
         now that the ensemble is power-neutral. */
     static constexpr float kLayerLevel = 0.206f;
 
-    static constexpr float kCutoffTrackingBelowC4 = 1.0f;  // see LayerBase::keyTrack
+    // 1.0 until 2026-10-07: low chords too dark (owner's blind A/B of 2026-10-06,
+    // docs/gate-status.md). Root and Bloom went to 0.5; Clearing only to 0.75,
+    // because at 0.5 its close C2 triad measured roughness 1.59 against the 1.2
+    // limit (v1: 9.0) - the register work the owner preferred on solo low notes.
+    static constexpr float kCutoffTrackingBelowC4 = 0.75f;
     static constexpr float kCutoffTrackingAboveC4 = 0.25f;
 
     // Ensemble, all in seconds / Hz.

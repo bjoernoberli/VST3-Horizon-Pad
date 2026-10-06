@@ -270,6 +270,29 @@ Owner decisions, 2026-10-02, following [`width-design-draft.md`](width-design-dr
 Measured and verified in [`width-design-draft.md`](width-design-draft.md) ("Built");
 the listening items are in [`gate-status.md`](gate-status.md).
 
+### A-007 - decisions from the owner's blind listening pass (2026-10-07)
+
+The owner ran the blind A/B/X session (v1 `bf17ee8` against the v2 build of
+2026-10-04, 19 items, every X identified correctly) and played the new presets.
+Results and measurements in [`gate-status.md`](gate-status.md); decisions:
+
+- **WIDTH at 100% is full width again on every pad.** Amends A-006's profiles: Root
+  now opens from 20% (was 30%) and Bloom from 15% (was 20%), and both reach their full
+  spread at 100% (were 60% and 90%). The opening order - air first, foundation last -
+  stays. (Root solo and Sternenzelt at WIDTH 100% lost to v1's full width.)
+- **Expanse returns to v1's two-pole safety lowpass** (and v1's level), departing from
+  the Faust prototype's one-pole on purpose: the owner preferred v1's Expanse.
+- **Bloom's shared pulse is shallower** (chord depth ~29%, was 44%; v1 averaged it to
+  16%) - it stays shared, so the depth no longer depends on the voicing.
+- **Low chords brighter**: key tracking below C4 eased (Root and Bloom 0.5, Clearing
+  0.75, were 0.8-1.0) as far as the roughness limits allow.
+- **The default patch plays DETUNE 0%** (Lagerfeuer and the parameter default); 50%
+  still reproduces the designed detune.
+- **Presets: 17 in three families** (9 pads, 5 in-between, 3 leads), ordered in
+  repeating cycles from the longest envelope to the shortest; the plugin opens on
+  Lagerfeuer. In-between presets: "the main place to be are harmonies".
+- **EX-003 closed**: the owner judged v2's top octave usable and v1's not.
+
 ## Where the exceptions go
 
 12.5 requires a written, dated, named exception whenever a measurement fails and the

@@ -15,7 +15,8 @@ void AiryChoirLayer::prepareLayer (const juce::dsp::ProcessSpec&)
         vs.bandpass.setResonance (1.6f);
 
         vs.safetyLowpass.prepare (stereoSpec);
-        vs.safetyLowpass.setType (juce::dsp::FirstOrderTPTFilterType::lowpass);
+        vs.safetyLowpass.setType (juce::dsp::StateVariableTPTFilterType::lowpass);
+        vs.safetyLowpass.setResonance (0.5f);           // v1's value: no peak
         vs.safetyLowpass.setCutoffFrequency (1800.0f);
     }
 
@@ -98,7 +99,7 @@ void AiryChoirLayer::renderVoice (int voiceIndex, juce::AudioBuffer<float>& targ
     const auto shimmerLen = juce::jmin (numSamples, shimmerBus.getNumSamples());
 
     const auto invSr = 1.0f / (float) sampleRate;
-    const auto level = 0.185f * v.velocity; // 0.22 in v1: -1.5 dB matches v1 at C4, the voicing anchor, after the one-pole LP restored the prototype's top end
+    const auto level = 0.22f * v.velocity;  // v1's level, back with v1's two-pole LP (2026-10-07)
     const auto noteFreq = bentFrequency (v.frequency);
 
     // Register pinning (see the header): below C4 the stack sounds in the

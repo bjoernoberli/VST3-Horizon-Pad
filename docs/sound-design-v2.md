@@ -187,16 +187,22 @@ Level-matched against `main` renders; everything above is measured, none of it
 heard.
 
 1. WIDTH: spread vs Haas - image width and depth, all four pads, 50% and 100%.
+   *2026-10-06: spread preferred at 50% (Klarheit), Haas at 100% (Root, Sternenzelt) -> every pad reaches full spread at 100% since 2026-10-07.*
 2. Clearing: ensemble vs slow flanger - is it still Clearing?
 3. Drift: irregular vs sine - does the pad still "breathe"?
 4. Bloom: shared pulse in chords - musical, or too obvious?
+   *2026-10-06: v1's Bloom preferred - too obvious; the shared pulse is shallower since 2026-10-07.*
 5. Expanse: one-pole LP and stereo shimmer - brighter; too bright?
+   *2026-10-06: v1's Expanse preferred - back to the two-pole LP since 2026-10-07.*
 6. Across the keyboard: C2 and C6 chords on every pad.
 7. REVERB with the bass kept dry: does the room still feel big?
+   *2026-10-06: Bergecho - v2 preferred ("fuller"); Steinerne Ruhe - v1 preferred; to be heard again.*
 8. The low register: C1-C3 single notes and a C2 open fifth / close triad on every
    pad - is it music now?
    *Heard 2026-10-07, owner: "acceptably good - not the best choice for bass or
    sub-bass, but still musical for that type of instrument."*
 9. Expanse's register pinning: a bass line C2-G2-C3 - does the "air above" follow
    naturally, or is the octave crossfade audible?
+   *2026-10-06: v2 preferred (Expanse bass line).*
 10. Clearing's top octaves (C5-C7), now louder than its middle.
+   *2026-10-06: v2 preferred (Clearing C5-E5-G5).*

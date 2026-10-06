@@ -41,16 +41,17 @@ protected:
     float releaseSeconds() const noexcept override { return 1.6f; }
 
     /** The moving pad sits between the air and the foundation: it opens from
-        WIDTH 20% and stops at 90% of its spread, wide enough to surround,
-        not so wide that the shared tremolo smears across the field. */
-    WidthProfile widthProfile() const noexcept override { return { 0.20f, 0.90f }; }
+        WIDTH 15% and reaches its full spread at 100% (20% and 90% until
+        2026-10-07: the owner preferred v1's wider Bloom). The shared tremolo
+        is shallower since the same date, so full width no longer smears it. */
+    WidthProfile widthProfile() const noexcept override { return { 0.15f, 1.00f }; }
 
 private:
     static constexpr int kNumOscs = 2;
     static constexpr float kOscDetuneFraction[2] { 0.0004f, -0.0005f }; // det * 0.01 from the Faust source
     static constexpr float kOscDriftRateHz[2] { 0.33f, 0.37f };
     static constexpr float kOscSpread[2] { -0.8f, 0.8f };
-    static constexpr float kCutoffTrackingBelowC4 = 1.0f;  // see LayerBase::keyTrack
+    static constexpr float kCutoffTrackingBelowC4 = 0.5f;  // 1.0 until 2026-10-07: low chords too dark (owner's blind A/B of 2026-10-06 (docs/gate-status.md))
     static constexpr float kCutoffTrackingAboveC4 = 0.5f;
 
     struct VoiceState

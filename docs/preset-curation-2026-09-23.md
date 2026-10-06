@@ -197,3 +197,45 @@ Glasperle, Klarheit, Silberpfad, Goldstaub; Talwind -> Sturmfront, Ruhepuls.
 within +/-0.9 LU (-17.24 to -16.02); Sternenzelt -18.90 (EX-002, accepted by ear on
 2026-10-03).
 
+## 2026-10-07, second pass: listening results, cycles, Glasperle
+
+**From the blind A/B** (19 items, X correct on all 18 answered; full table in
+`gate-status.md`; verdicts in `docs/listening/2026-10-06-verdicts.json`). Measured with
+`tools/listening/compare_items.py` (current minus v1, after the session's -20 LUFS
+match), the v1-preferred items before and after this pass's DSP changes:
+
+| Item (owner preferred v1) | Before | After | Change |
+|---|---|---|---|
+| Root solo, WIDTH 100% - width 150-500 Hz / 2-5 kHz | -12.8 / -5.6 dB | -9.4 / -5.5 dB | Root and Bloom reach full spread at WIDTH 100% |
+| Expanse chord - brightness | +258 c | +147 c | Expanse back to v1's two-pole lowpass and level |
+| Bloom chord - movement | +0.9 dB | -0.4 dB | shared pulse +/-0.35 -> +/-0.20 (chord depth ~29%) |
+| C2 fifth / triad - brightness | -932 / -910 c | -480 / -559 c | tracking below C4: Root, Bloom 0.5; Clearing 0.75 (roughness limit) |
+| C6 chord - top (5-12 kHz) | +5.6 dB | +5.5 dB | not changed - one item, open for the next pass |
+
+The items preferred on v2 kept their character (blends, Clearing, the register fixes).
+Default patch: DETUNE 0% (preferred over the designed 50%).
+
+**Order: repeating cycles.** Owner: first five good, but each run from the longest
+attack and release to the shortest, repeating from #6, so a slow pad is never followed
+straight by a lead. Every cycle goes pads -> in-between -> lead:
+
+| Cycle | Presets (ATTACK/RELEASE) |
+|---|---|
+| 1-5 | Alpengluehen (60/60), Lagerfeuer (40/40), Talwind (11/15), Frostklang (9/13), Funkenflug (0/5) |
+| 6-9 | Steinerne Ruhe (85/85), Bergecho (70/80), Kupferglanz (10/14), Silberpfad (7/10) |
+| 10-13 | Mitternachtsblau (80/85), Ruhepuls (60/65), Sturmfront (12/16), Glasperle (0/10) |
+| 14-17 | Sternenzelt (75/75), Daemmerlicht (55/60), Goldstaub (45/50), Klarheit (8/13) |
+
+The plugin opens on Lagerfeuer (#2): the parameter defaults are its values, and the
+processor now selects the factory preset the defaults equal, so the preset bar names
+the sound heard (test `startup_program_matches_defaults`, shown failing without it).
+
+**Glasperle, second pass.** Owner: "no longer piercing, but not quite glass anymore".
+Halfway back: Expanse 0.50 -> 0.72 of the mix, FILTER 60 -> 72%; strongest 1.5-6 kHz
+partial -15.3 dB (piercing was -12.4, first fix -16.6); onset 15-25 ms; loudness
+matched (-16.94 LUFS). **Silberpfad** "sits on top of Lagerfeuer"; the **in-betweens**
+"work well - the main place to be are harmonies".
+
+**Loudness after the DSP changes** (`descriptors.py --presets`): median -16.90 LUFS;
+Steinerne Ruhe trimmed 0.5 dB (it measured +1.0 LU); Sternenzelt -1.7 LU (EX-002).
+

@@ -244,3 +244,11 @@ Expanse, and because Expanse has already been changed once today (the shimmer
 fix in [`g5-null-test.md`](g5-null-test.md) brought its octave back 57 dB).
 Two brightness changes to one layer without ears is how a pad ends up harsh.
 It belongs in the same sound-design pass as the G5 items.
+
+### EX-003 resolution (2026-10-07)
+
+Closed by listening. In the owner's blind A/B of 2026-10-06 (`expanse_top`, Expanse
+solo C7-E7-G7) X was identified correctly and the v2 build was preferred; the note on
+v1 reads "not usable". The polyBLAMP triangles (2026-09-26) and, since 2026-10-07,
+v1's two-pole safety lowpass leave the top octave clean enough to hear and use.
+

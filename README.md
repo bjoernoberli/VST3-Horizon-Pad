@@ -33,8 +33,8 @@ percussive-pad range too (see below).
 
 Stereo width comes from one **WIDTH** macro. Each layer turns it into its own
 width through a fixed profile, so the pads open in order as the knob turns:
-Expanse (the air) from 0%, Clearing from 10%, Bloom from 20%, and Root (the
-foundation) last, from 30%, reaching only 60% of its spread at full WIDTH. The
+Expanse (the air) from 0%, Clearing from 10%, Bloom from 15%, and Root (the
+foundation) last, from 20%; at full WIDTH every pad reaches its full spread. The
 width itself spreads each layer's detuned oscillators across the stereo field
 with constant-power panning, mirrored on alternate voices so a chord's
 oscillators interleave. Detuned oscillators are decorrelated, so the spread is
@@ -126,37 +126,39 @@ host's own per-track program list.
 ## Factory presets
 
 **17** factory programs (`Source/presets/Presets.cpp`) in three families: **pads**
-(slow, the original design), **in-between** (pads that speak in 0.2-0.45 s) and
-**leads** (onset 15-165 ms, release 0.2-0.6 s with the room). The first five are the
-most different sounds in the bank - one or more from every family - and every later
-preset is a variant of the first-five sound it is nearest to (2026-10-07; method in
-[`docs/preset-curation-2026-09-23.md`](docs/preset-curation-2026-09-23.md)).
+(slow, the original design), **in-between** (pads that speak in 0.2-0.45 s - at home in
+harmonies) and **leads** (onset 15-165 ms, release 0.2-0.6 s with the room). They are
+ordered in **repeating cycles**, each from the longest attack and release to the
+shortest, so browsing never jumps from a slow pad straight to a lead; the first cycle
+holds the five most different sounds in the bank. The plugin opens on **Lagerfeuer**
+(#2), the default patch. Method and numbers:
+[`docs/preset-curation-2026-09-23.md`](docs/preset-curation-2026-09-23.md).
 
 All are loudness-matched to -16.9 LUFS (the bank median on the same chord
-measurement): 16 of 17 within +/-0.9 LU; Sternenzelt sits ~2 LU lower, an accepted
+measurement): 16 of 17 within +/-0.6 LU; Sternenzelt sits ~1.7 LU lower, an accepted
 exception confirmed by ear (EX-002 in [`docs/exceptions.md`](docs/exceptions.md)).
 Every preset is checked by the test suite (`all_presets_safe`) for clipping, NaN/Inf
 and peaks above 0 dBFS on an eight-note chord.
 
 | # | Preset | Family | Character |
 |---|--------|--------|-----------|
-| 1 | Lagerfeuer | pad | Warm, close and grounded - the campfire pad |
-| 2 | Funkenflug | lead | Bright saw lead - sparks flying, cuts through the band |
-| 3 | Alpenglühen | pad | Warm light spreading wide across the peaks |
+| 1 | Alpenglühen | pad | Warm light spreading wide across the peaks |
+| 2 | Lagerfeuer | pad | Warm, close and grounded - the campfire pad (the default patch) |
+| 3 | Talwind | in-between | Movement and breeze - a moving synth that answers in a breath |
 | 4 | Frostklang | in-between | Cold, bright and sharp - a frozen ring that speaks at once |
-| 5 | Talwind | in-between | Movement and breeze - a moving synth that answers in a breath |
-| 6 | Steinerne Ruhe | pad | Stillness carved in stone - minimal, slow and sparse *(variant of 1)* |
-| 7 | Mitternachtsblau | pad | A deep midnight drone, barely lit *(variant of 1)* |
-| 8 | Kupferglanz | in-between | Warm copper shine - a present poly synth that speaks quickly *(variant of 2)* |
-| 9 | Dämmerlicht | pad | Warm dusk light, gently settling *(variant of 3)* |
-| 10 | Bergecho | pad | A vast mountain echo - huge, cinematic space *(variant of 3)* |
-| 11 | Sternenzelt | pad | Vast and celestial - Expanse fills the whole sky *(variant of 3)* |
-| 12 | Glasperle | lead | Glassy bell lead - plucks bright, then sings softer *(variant of 4)* |
-| 13 | Klarheit | in-between | Clear, present and simple - quick enough for rhythm parts *(variant of 4)* |
-| 14 | Silberpfad | lead | Soft, singing lead to play over the pads *(variant of 4)* |
-| 15 | Goldstaub | pad | Golden dust catching the light - bright and airy *(variant of 4)* |
-| 16 | Sturmfront | in-between | A dramatic storm front - big, wide chords that hit sooner *(variant of 5)* |
-| 17 | Ruhepuls | pad | A slow resting pulse, with subtle motion underneath *(variant of 5)* |
+| 5 | Funkenflug | lead | Bright saw lead - sparks flying, cuts through the band |
+| 6 | Steinerne Ruhe | pad | Stillness carved in stone - minimal, slow and sparse |
+| 7 | Bergecho | pad | A vast mountain echo - huge, cinematic space |
+| 8 | Kupferglanz | in-between | Warm copper shine - a present poly synth that speaks quickly |
+| 9 | Silberpfad | lead | Soft, singing lead to play over the pads |
+| 10 | Mitternachtsblau | pad | A deep midnight drone, barely lit |
+| 11 | Ruhepuls | pad | A slow resting pulse, with subtle motion underneath |
+| 12 | Sturmfront | in-between | A dramatic storm front - big, wide chords that hit sooner |
+| 13 | Glasperle | lead | Glassy bell lead - plucks bright, then sings softer |
+| 14 | Sternenzelt | pad | Vast and celestial - Expanse fills the whole sky |
+| 15 | Dämmerlicht | pad | Warm dusk light, gently settling |
+| 16 | Goldstaub | pad | Golden dust catching the light - bright and airy |
+| 17 | Klarheit | in-between | Clear, present and simple - quick enough for rhythm parts |
 
 Each preset's full ten-value parameter set lives in
 [`Source/presets/Presets.cpp`](Source/presets/Presets.cpp).
@@ -242,7 +244,7 @@ cmake --build build-release --target HorizonPadSoundTool -j 8
 ctest --test-dir build-release --output-on-failure
 ```
 
-Nineteen tests, under 40 seconds, driving the real plugin DSP through
+Twenty tests, about a minute, driving the real plugin DSP through
 `HorizonPadSoundTool` ([`tools/tests/dsp_tests.py`](tools/tests/dsp_tests.py)).
 Five assert end-to-end properties — zero reported latency, bit-identical
 renders from a seeded reset, all 36 sample-rate × block-size combinations

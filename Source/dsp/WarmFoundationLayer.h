@@ -33,11 +33,13 @@ protected:
     float sustainLevel() const noexcept override   { return 0.75f; }
     float releaseSeconds() const noexcept override { return 2.4f; }
 
-    /** The foundation opens last and least: it stays centred until WIDTH 30%
-        and reaches 60% of its designed spread at full WIDTH. It carries the
-        low end under a centred vocal and guitar, and below 140 Hz the output
-        is mono anyway (FxChain), so what width it has is upper partials. */
-    WidthProfile widthProfile() const noexcept override { return { 0.30f, 0.60f }; }
+    /** The foundation opens last: it stays centred until WIDTH 20% and
+        reaches its full spread at WIDTH 100%. Below 140 Hz the output is mono
+        anyway (FxChain), so what width it has is upper partials. Until
+        2026-10-07 it opened from 30% and stopped at 60% of its spread; in the
+        owner's blind A/B of 2026-10-06 Root solo and Sternenzelt at WIDTH 100%
+        lost to v1's full width, so the knob's top end is full width again. */
+    WidthProfile widthProfile() const noexcept override { return { 0.20f, 1.00f }; }
 
 private:
     // Oscillator layout: 0..2 = detuned triangle stack, 3 = saw edge, 4 = sub.
@@ -53,7 +55,7 @@ private:
         does, so high notes are no longer filtered away (-29 LUFS at C7
         against -18 at C4) while Root stays the darkest pad. Below C4, full
         tracking: a low note keeps C4's harmonic count instead of buzzing. */
-    static constexpr float kCutoffTrackingBelowC4 = 0.8f;
+    static constexpr float kCutoffTrackingBelowC4 = 0.5f;  // 0.8 until 2026-10-07: low chords too dark (owner's blind A/B of 2026-10-06 (docs/gate-status.md))
     static constexpr float kCutoffTrackingAboveC4 = 0.5f;
 
     struct VoiceState

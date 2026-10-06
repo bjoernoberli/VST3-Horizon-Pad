@@ -98,7 +98,7 @@ cmake --build build-release --target HorizonPadSoundTool -j 8
 ctest --test-dir build-release --output-on-failure
 ```
 
-Nineteen tests (~55 s), `tools/tests/dsp_tests.py`, registered by CMake. They
+Twenty tests (~60 s), `tools/tests/dsp_tests.py`, registered by CMake (plus the two validators, label `validation`). They
 drive the real DSP through `HorizonPadSoundTool` rather than unit-testing
 classes: latency, seeded-reset determinism, the 36 sample-rate x block-size
 combinations, 60 s of silence, all 17 presets; regression guards, one per bug
@@ -196,8 +196,8 @@ design, the global macros applied to every layer each block
 (`attackTimeScale`, `releaseTimeScale`, `brightness` — ramped per-sample via
 `smoothedBrightness` to avoid filter zipper noise — plus WIDTH and DETUNE),
 stereo WIDTH (one macro, turned into each layer's own width by its fixed
-`widthProfile()` - Expanse opens from 0%, Clearing 10%, Bloom 20%, Root 30% and
-only to 60%; the width spreads each voice's detuned oscillators across the
+`widthProfile()` - Expanse opens from 0%, Clearing 10%, Bloom 15%, Root 20%, all
+reaching full spread at 100% (since 2026-10-07; Root stopped at 60% before); the width spreads each voice's detuned oscillators across the
 field, constant-power, mirrored on odd voices; mono-safe and level-flat - it
 replaced a Haas tap on 2026-09-26 and four per-pad WIDTH knobs on 2026-10-02),
 DETUNE (`makeDetuneRamp()`/`driftDepth()`: scales each stack's static detune

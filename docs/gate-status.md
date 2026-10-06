@@ -106,7 +106,7 @@ signed off on.
 |---|---|---|
 | EX-001 | DC offset when the output limiter engages | CLOSED 2026-09-23 - fixed, marginal pass |
 | EX-002 | Sternenzelt ~4.8 LU below the matched bank | OPEN - accepted; confirmed by ear 2026-10-03 |
-| EX-003 | Expanse aliases at MIDI 96-108 | OPEN - accepted |
+| EX-003 | Expanse aliases at MIDI 96-108 | CLOSED 2026-10-07 - v2's top octave preferred by ear; v1's "not usable" |
 
 ## Sound-design v2 (branch `sound-design-v2`, 2026-09-26)
 
@@ -172,6 +172,54 @@ worktree of `05c3f44`):
   -1 dBTP applies to a mastered file before encoding. The codec row now masters each
   render to -1 dBTP and measures the decode (AAC overshoot <= 0.1 dB, MP3 no clipped
   samples), and the -14 LUFS peak is reported, not judged. PLR 11.4-13.6 dB.
+
+## Listening pass, 2026-10-06 - results and what they changed
+
+The owner ran the blind A/B/X page (`tools/listening/make_session.py`): v1 (`bf17ee8`)
+against the v2 build of 2026-10-04, loudness-matched, 19 items. **X was identified
+correctly on all 18 items answered**, so every difference was audible.
+
+| Item | Preferred | Note | What it changed (2026-10-07) |
+|---|---|---|---|
+| Default patch, C3-E4 | v2 | "v1 more flat, v2 lives more" | - |
+| Root solo, WIDTH 100% | **v1** | | Root reaches full spread at 100% (stopped at 60%) |
+| Clearing solo | v2 | | - |
+| Expanse solo, C4-E4-G4 | **v1** | | Expanse back to v1's two-pole lowpass: +258 -> +139 cents vs v1 |
+| Bloom solo | **v1** | | Shared pulse shallower: chord depth 44% -> ~29% |
+| Low register, C2 fifth / triad | **v1** | | Key tracking below C4 eased: brightness gap -932/-910 -> -629/-525 cents vs v1, within roughness limits |
+| Root solo C1, C2 | v2 | | kept (register work) |
+| Expanse bass line C2-C3 | v2 | | kept (register pinning) |
+| Clearing top C5 | v2 | | - |
+| Bergecho | v2 | "v2 fuller, v1 clearer" | - |
+| Steinerne Ruhe | **v1** | | Root wider at high WIDTH; preset -0.5 dB; heard again next pass |
+| Expanse top C7 (EX-003) | v2 | "v1 not usable" | EX-003 closed |
+| Default patch, C6 chord | **v1** | | **open** - one item, not changed (no stacking unheard changes) |
+| Lagerfeuer | v2 | | - |
+| Klarheit, WIDTH 50% | v2 | | the staggered profile at mid widths kept |
+| Sternenzelt, WIDTH 100% | **v1** | | full spread at 100% for Root and Bloom |
+| DETUNE 0% vs designed | **0%** | | default patch (Lagerfeuer, parameter default) at DETUNE 0% |
+| DETUNE 100% vs designed | designed | X not answered | - |
+
+Reading across the items: v2 wins in the blends and wherever it fixed a register
+problem; v1 wins where v2 narrowed or darkened a single pad (width profiles, Expanse's
+top end, low-chord tracking) and where Bloom's pulse was exposed. The changes target
+exactly those, and each moved its item towards v1 by measurement (current minus v1,
+per item: `abdiff` numbers in `docs/preset-curation-2026-09-23.md`, 2026-10-07 second
+pass). Width at the default 40% was left alone: those verdicts conflict (Lagerfeuer
+and the default patch, narrower, preferred v2; Steinerne Ruhe and Bloom solo, wider,
+preferred v1).
+
+Owner's notes from playing the presets: Glasperle "no longer piercing, but not quite
+glass anymore" (moved halfway back, strongest partial -15.3 dB); Silberpfad "sits on
+top of Lagerfeuer"; in-betweens "work well - the main place to be are harmonies";
+first five good, but order each run from longest attack and release to shortest and
+repeat (done: cycles, see `README.md`). The owner used the 2026-10-04 session (with
+the Klarheit item), which compares the same DSP.
+
+**Next listening pass** - regenerate the page (recipe above) and judge: Root solo and
+Sternenzelt at WIDTH 100%; Expanse chord; Bloom chord; the C2 fifth and triad;
+Steinerne Ruhe; the C6 chord (still open); the default patch at DETUNE 0%; Glasperle's
+glass; and the new preset order when browsing.
 
 ## Presets: three families, 17 (2026-10-07)
 

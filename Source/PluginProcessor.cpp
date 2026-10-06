@@ -126,7 +126,10 @@ juce::AudioProcessorValueTreeState::ParameterLayout HorizonPadAudioProcessor::cr
     addPercent (ParamID::filterMacro,    "Filter",   0.30f);
     addPercent (ParamID::reverbMacro,    "Reverb",   0.20f);
     addPercent (ParamID::widthMacro,     "Width",    0.40f);
-    addPercent (ParamID::detuneMacro,    "Detune",   0.50f);
+    // 0.0 since 2026-10-07: the owner preferred the default patch at DETUNE 0%
+    // over the designed detune (50%) in the blind A/B of 2026-10-06. 50% still
+    // reproduces the designed detune exactly; the defaults stay Lagerfeuer's.
+    addPercent (ParamID::detuneMacro,    "Detune",   0.00f);
 
     return layout;
 }
@@ -155,6 +158,33 @@ HorizonPadAudioProcessor::HorizonPadAudioProcessor()
     // is nothing else to seed at construction. Deliberately no
     // setValueNotifyingHost() here - hosts dislike parameter traffic from a
     // processor constructor.
+    //
+    // The bank is ordered by family and envelope length (2026-10-07), so the
+    // preset the defaults equal is not necessarily program 0. Point the
+    // program index and the preset bar at it, so the name shown at startup is
+    // the sound heard. Matched by value, not by name: renaming or reordering
+    // the bank cannot break it (test startup_program_matches_defaults).
+    {
+        const auto& factory = getFactoryPresets();
+
+        for (size_t p = 0; p < factory.size(); ++p)
+        {
+            bool same = true;
+
+            for (int i = 0; i < kNumLayers; ++i)
+                same = same && std::abs (factory[p].volumes[(size_t) i] - volumeParams[(size_t) i]->load()) < 1.0e-4f;
+
+            for (int i = 0; i < kNumGlobalParams; ++i)
+                same = same && std::abs (factory[p].macros[(size_t) i] - macroParams[(size_t) i]->load()) < 1.0e-4f;
+
+            if (same)
+            {
+                currentProgram.store ((int) p);
+                activePresetIndex.store ((int) p);
+                break;
+            }
+        }
+    }
 
     // Both A/B buffers start out identical, mirroring the live defaults - the
     // mockup's buffers also start as two copies of the same starting state.

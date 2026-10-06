@@ -246,16 +246,43 @@ def test_clearing_ensemble_present():
 
 
 def test_bloom_tremolo_survives_chords():
-    """Bloom's 3.2 Hz tremolo keeps its depth in a chord.
+    """Bloom's 3.2 Hz tremolo keeps its depth in a chord - without being obvious.
 
     With a random tremolo phase per voice, a four-note chord averaged the
-    pulse from 44% to 16% (review S-5). The LFO is shared now.
+    pulse from 44% to 16% (review S-5); the shared LFO (2026-09-26) kept 44%,
+    which the owner found too obvious in the blind A/B of 2026-10-06 (preferred
+    v1's Bloom). Since 2026-10-07 the shared pulse is shallower: it must still
+    survive a chord (above v1's 16%) and stay below the 44% that was rejected.
     """
     x, sr = render(["--solo=bloom", "--notes=48,55,60,64", "--seed=3", "--param=reverb=0",
                     "--param=width=0", "--hold=10", "--tail=0.2"])
     depth = am_depth_at(window(x, sr, 4.0, 10.0), sr, 3.2)
-    if depth < 30.0:
-        raise Fail(f"Bloom's tremolo depth in a chord is {depth:.1f}%, expected at least 30%")
+    if depth < 20.0:
+        raise Fail(f"Bloom's tremolo depth in a chord is {depth:.1f}%, expected at least 20% "
+                   "(v1's per-voice phases averaged it to 16%)")
+    if depth > 38.0:
+        raise Fail(f"Bloom's tremolo depth in a chord is {depth:.1f}% - the owner rejected 44% as too obvious")
+
+
+def test_startup_program_matches_defaults():
+    """The program the plugin opens on is the sound it makes.
+
+    The bank is ordered in cycles by envelope length (2026-10-07), so program 0
+    is no longer the preset the parameter defaults equal (Lagerfeuer). The
+    processor selects that preset at construction; without it the preset bar
+    named program 0 while the defaults played. Compared by value, not by name.
+    """
+    d = run(["--notes=60", "--hold=0.5", "--tail=0"])
+    name, applied = d["startupProgram"], d["activeParams"]
+    presets = {p["name"]: p for p in list_presets()}
+    if name not in presets:
+        raise Fail(f"startup program {name!r} is not a factory preset")
+    p = presets[name]
+    want = dict(p["volumes"], **p["macros"])
+    off = {k: (applied.get(k), v) for k, v in want.items()
+           if applied.get(k) is None or abs(float(applied[k]) - float(v)) > 1e-3}
+    if off:
+        raise Fail(f"the plugin opens on {name!r} but plays different values: {off}")
 
 
 def test_keyboard_level_span():
@@ -451,13 +478,15 @@ def test_width_profile_staggered():
 
     One WIDTH macro drives all four pads through each pad's fixed profile
     (LayerBase::widthProfile()): Expanse opens from 0%, Clearing from 10%,
-    Bloom from 20%, Root from 30%. Before 2026-10-02 every pad had its own
-    WIDTH knob and every factory preset set all four alike, so the shape
-    across the pads never changed. At 15% Root and Bloom must still be
-    exactly mono while Expanse has opened; at 29% Root must still be mono
-    while Clearing and Bloom have opened; and no pad may narrow as WIDTH rises.
+    Bloom from 15%, Root from 20%, and since 2026-10-07 every pad reaches its
+    full spread at 100% (Root stopped at 60% and Bloom at 90% before; the owner
+    preferred v1's full width on Root and Sternenzelt at WIDTH 100%). At 8%
+    Root, Bloom and Clearing must still be exactly mono while Expanse has
+    opened; at 14% Root and Bloom mono, Clearing open; at 18% Root mono, Bloom
+    open (Clearing's ensemble is stereo at any WIDTH, so its opening is checked
+    at 50%); no pad may narrow as WIDTH rises.
     """
-    steps = (0.0, 0.15, 0.29, 0.5, 1.0)
+    steps = (0.0, 0.08, 0.14, 0.18, 0.5, 1.0)
     corr = {}
     for layer in ("root", "clearing", "expanse", "bloom"):
         corr[layer] = []
@@ -467,11 +496,18 @@ def test_width_profile_staggered():
             seg = window(x, sr, 3.0, 6.0)
             corr[layer].append(float(np.corrcoef(seg[:, 0], seg[:, 1])[0, 1]))
 
-    for layer, i in (("root", 1), ("root", 2), ("bloom", 1)):
+    for layer, i in (("root", 1), ("root", 2), ("root", 3), ("bloom", 1), ("bloom", 2), ("clearing", 1)):
         if abs(corr[layer][i] - corr[layer][0]) > 1e-4:
             raise Fail(f"{layer} has opened at WIDTH {steps[i]:.0%} (L/R correlation "
                        f"{corr[layer][0]:.4f} -> {corr[layer][i]:.4f}); its profile should keep it mono")
-    for layer, i in (("expanse", 1), ("clearing", 2), ("bloom", 2)):
+    # The order: each pad has *started* to open (any change) at the step after its
+    # profile's start, while the next one is still mono (checked above).
+    for layer, i in (("bloom", 3),):
+        if abs(corr[layer][i] - corr[layer][0]) <= 1e-4:
+            raise Fail(f"{layer} has not started to open by WIDTH {steps[i]:.0%}")
+    # Clearly open by 50% (Clearing's ensemble is stereo at any WIDTH, so its
+    # opening only shows there).
+    for layer, i in (("expanse", 1), ("clearing", 4), ("bloom", 4), ("root", 4)):
         if corr[layer][0] - corr[layer][i] < 0.002:
             raise Fail(f"{layer} has not opened by WIDTH {steps[i]:.0%} (L/R correlation "
                        f"{corr[layer][0]:.4f} -> {corr[layer][i]:.4f})")

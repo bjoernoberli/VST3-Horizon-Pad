@@ -102,7 +102,9 @@ private:
         float sweepPhase = 0.0f;
 
         juce::dsp::StateVariableTPTFilter<float> bandpass;      // stereo
-        juce::dsp::FirstOrderTPTFilter<float> safetyLowpass;    // stereo, one pole as in the prototype
+        // stereo, two poles as in v1: the owner preferred v1's Expanse to the prototype's
+        // one-pole top end (owner's blind A/B of 2026-10-06 (docs/gate-status.md))
+        juce::dsp::StateVariableTPTFilter<float> safetyLowpass;
     };
 
     std::array<VoiceState, (size_t) kMaxVoices> voiceState;

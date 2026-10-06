@@ -280,6 +280,7 @@ if (HORIZON_TEST_DEPS_MISSING)
 else()
     set(HORIZON_TEST_NAMES
         latency_zero
+        startup_program_matches_defaults
         reset_determinism
         rate_block_matrix
         silence_after_note
