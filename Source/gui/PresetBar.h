@@ -1,6 +1,7 @@
 #pragma once
 
 #include "HorizonLookAndFeel.h"
+#include "Motion.h"
 
 class HorizonPadAudioProcessor;
 
@@ -13,7 +14,7 @@ namespace horizon::ui
     "+ Save preset" control that expands into an inline name field with
     Save/Cancel buttons, and a real A/B compare pair in its own rounded
     group - switching slots recalls that slot's own independently-stored
-    snapshot of all eight parameters, and the swap (⇄) button copies the
+    snapshot of all ten parameters, and the swap (⇄) button copies the
     active slot onto the other one. All backed by the processor's real,
     persistent state - see HorizonPadAudioProcessor's class-level
     thread-safety note for how the A/B buffers and the on-disk user-preset
@@ -25,6 +26,13 @@ namespace horizon::ui
     has more content just out of view; "+ Save preset" and the A/B group
     stay in fixed slots outside that viewport so they're always reachable,
     never pushed off by how many presets exist.
+
+    Motion (advance(), one call per editor frame): the gold highlight fades
+    from the old preset to the new one, the row scrolls the active preset
+    into view when it changes from elsewhere (the host, a save), a saved
+    preset's pill grows in and a deleted one shrinks out before it is
+    removed, and the ⇄ copy flash fades instead of blinking off. Nothing
+    repaints while nothing changes.
 */
 class PresetBar final : public juce::Component
 {
@@ -36,8 +44,16 @@ public:
     void paintOverChildren (juce::Graphics&) override;
     void resized() override;
 
-    /** Re-reads the current program, user presets, and A/B state from the processor. */
+    /** Re-reads the current program, user presets, and A/B state from the
+        processor. Cheap enough to call every frame; repaints only what changed. */
     void refreshFromProcessor();
+
+    /** One editor frame of the row's animations. */
+    void advance (double now, float dt);
+
+    /** The sky's colour behind the row (it changes with FILTER, see
+        HorizonScene), for the scroll cue's fade-to-background. */
+    void setBackdropColour (juce::Colour colour);
 
 private:
     /** One user-saved preset: a single rounded pill containing a clickable
@@ -46,31 +62,54 @@ private:
     class UserPresetPill final : public juce::Component
     {
     public:
-        UserPresetPill (juce::String presetName, std::function<void()> onApply, std::function<void()> onDelete);
+        explicit UserPresetPill (juce::String presetName);
 
         void paint (juce::Graphics&) override;
         void resized() override;
 
-        void setActive (bool shouldBeActive);
+        void setActive (bool shouldBeActive) noexcept { active = shouldBeActive; }
+        void snapHighlight();
+
+        void startGrowing();
+        void startShrinking();
+        bool isShrinking() const noexcept { return shrinking; }
+        bool hasShrunk() const noexcept { return shrinking && presence.isSettled(); }
+
+        /** Returns true if the pill's width moved (the row needs laying out). */
+        bool advance (float dt);
+
         int preferredWidth() const;
+        int currentWidth() const;
+        float getPresence() const noexcept { return presence.value; }
 
         const juce::String name;
+        std::function<void()> onApply, onDelete;
 
     private:
+        void applyHighlight();
+
         // Matches MacrosPanel's secondary (FILTER/REVERB) knob size, so the
         // delete "x" reads as a properly-sized control instead of a cramped
         // corner afterthought.
         static constexpr int kDeleteButtonWidth = 34;
 
-        bool active = false;
+        bool active = false, shrinking = false;
+        motion::Follower highlight;    // 0..1, the gold
+        motion::Spring presence;       // 0..1, width and opacity while growing/shrinking
         juce::TextButton nameButton, deleteButton;
     };
 
-    void rebuildUserPresetButtons();
+    UserPresetPill* addUserPresetPill (const juce::String& name);
+    void syncUserPresetPills();
     void beginSavingNewPreset();
     void commitSavingNewPreset();
     void cancelSavingNewPreset();
     void layOutScrollContent();
+
+    juce::Component* activePresetComponent() const;
+    void scrollToShow (juce::Component* target, bool animate);
+    void applyFactoryHighlight (int index);
+    void applySwapFlash();
 
     HorizonPadAudioProcessor& processor;
 
@@ -82,6 +121,7 @@ private:
     juce::Component presetScrollContent;
 
     juce::OwnedArray<juce::TextButton> presetButtons;
+    std::vector<motion::Follower> factoryHighlights;
     juce::OwnedArray<UserPresetPill> userPresetPills;
 
     juce::TextButton saveButton { "+ Save preset" };
@@ -92,6 +132,16 @@ private:
     juce::TextButton slotAButton { "A" };
     juce::TextButton slotBButton { "B" };
     juce::TextButton swapButton { juce::String::fromUTF8 ("\xe2\x87\x84") }; // unicode left-right arrows
+
+    // --- Motion state.
+    int shownPresetKind = -1, shownPresetIndex = -1;
+    motion::Spring scroll;
+    bool scrolling = false, needsInitialScroll = false;
+    int lastScrollX = 0;
+    motion::Follower swapFlash;
+    bool swapFlashTimed = false;
+    double swapFlashHoldUntil = 0.0;
+    juce::Colour backdrop { 0xff71603f };   // the designed sky at this row (FILTER 50%)
 
     JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR (PresetBar)
 };

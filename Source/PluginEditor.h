@@ -3,6 +3,7 @@
 #include "PluginProcessor.h"
 
 #include "gui/HorizonLookAndFeel.h"
+#include "gui/HorizonScene.h"
 #include "gui/TitleBanner.h"
 #include "gui/PresetBar.h"
 #include "gui/PadKnob.h"
@@ -12,15 +13,14 @@
 #include "gui/FooterBar.h"
 
 /**
-    The editor: one shared gradient panel (drawHorizonPanel - background,
-    border, mountain skyline, corner glow) behind a title banner, a preset
-    row, an 8-column knob grid (PITCH, MOD, the four pad knobs, the macros
-    grid, OUTPUT), and a footer strip - a pixel-accurate recreation of the
-    Claude Design GUI handoff ("Horizon Pad.dc.html"), read directly rather
-    than approximated. There is no on-screen keyboard: play from a MIDI
-    keyboard/controller, matching a real Launchkey-style workflow (the eight
-    knobs mirror a Launchkey 25's eight knobs, and the wheels mirror its
-    pitch/mod wheels).
+    The editor: one shared panel (HorizonScene - sky, glow, mountain ridge)
+    behind a title banner, a preset row, an 8-column knob grid (PITCH, MOD,
+    the four pad knobs, the macros grid, OUTPUT), and a footer strip - a
+    pixel-accurate recreation of the Claude Design GUI handoff ("Horizon
+    Pad.dc.html"), read directly rather than approximated. There is no
+    on-screen keyboard: play from a MIDI keyboard/controller, matching a real
+    Launchkey-style workflow (the eight knobs mirror a Launchkey 25's eight
+    knobs, and the wheels mirror its pitch/mod wheels).
 
     The window size and every inset below (kTopBottomPadding etc.) are taken
     straight from the handoff's own CSS (panelStyle's padding, presetsRowStyle's
@@ -29,6 +29,20 @@
     A fixed-size window: every child paints its own precise layout rather
     than scaling a "design surface", so there is no benefit to resizing and
     real risk of blurring the fine knob artwork.
+
+    Motion. Everything moves because the sound changed, and only then:
+      - the scene follows FILTER (time of day), REVERB (haze) and WIDTH
+        (the glow's spread);
+      - knobs glide after a preset recall or A/B switch, in a left-to-right
+        wave, while a hand on a knob is followed at once (AnimatedKnob);
+      - a recalled preset's name and description fade in under the wordmark;
+      - each pad card glows with its layer's real output;
+      - on open, the sky rises from night, the logo's sun comes up from
+        behind its peaks and the knobs sweep up to their values.
+    One frame callback (advanceFrame) drives it all, from the display's
+    vertical blank while the editor is on screen, capped near 60 fps; each
+    piece repaints only its own changed area, so a quiet editor costs
+    nothing. It also replaces the old 15 Hz polling timer.
 */
 class HorizonPadAudioProcessorEditor final : public juce::AudioProcessorEditor,
                                              private juce::Timer
@@ -40,8 +54,20 @@ public:
     void paint (juce::Graphics&) override;
     void resized() override;
 
+    /** One animation frame at `nowSeconds` (Time::getMillisecondCounterHiRes()
+        timebase): polls the processor and advances every animation. Driven by
+        the vertical blank; public so tools/gui_snapshot can step it offline
+        with a clock of its own. */
+    void advanceFrame (double nowSeconds);
+
 private:
     void timerCallback() override;
+
+    void pullSceneTargets();
+    void startWave (double startTime, bool fromZero);
+    void showRecalledPresetTitle();
+
+    static double clockNow() noexcept { return juce::Time::getMillisecondCounterHiRes() * 0.001; }
 
     // The design's panel is 1080px wide with 36px top/bottom and 40px
     // left/right padding; the window height follows from stacking its own
@@ -51,11 +77,18 @@ private:
     static constexpr int kSidePadding = 40;
     static constexpr int kTopBottomPadding = 36;
 
-    juce::Rectangle<int> dividerBounds;
+    // AudioProcessorEditor's own `processor` member is the plain
+    // AudioProcessor; the frame callback needs the meters and recall counters.
+    HorizonPadAudioProcessor& horizonProcessor;
+    std::atomic<float>* filterParam = nullptr;
+    std::atomic<float>* reverbParam = nullptr;
+    std::atomic<float>* widthParam = nullptr;
 
-    // No `processor` member here on purpose: AudioProcessorEditor already
-    // holds one, and a second shadowed copy was never read.
+    juce::Rectangle<int> dividerBounds;
+    float presetRowProportion = 0.34f;   // the preset row's centre, as a proportion of the window height
+
     horizon::ui::HorizonLookAndFeel lookAndFeel;
+    horizon::ui::HorizonScene scene;
 
     horizon::ui::TitleBanner titleBanner;
     horizon::ui::PresetBar presetBar;
@@ -71,6 +104,16 @@ private:
     // TooltipWindow instance somewhere in the component tree, that text is
     // stored but never shown - this is what makes it appear on hover.
     juce::TooltipWindow tooltipWindow;
+
+    // --- Frame state.
+    double lastFrameTime = -1.0;
+    double lastVBlankTime = -1.0;
+    float sceneTime = 0.0f;
+    int seenRecallCount = 0, seenSwitchCount = 0;
+    bool sunrisePending = true;
+
+    // Last, so it can only call advanceFrame() once everything above exists.
+    juce::VBlankAttachment vblank;
 
     JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR (HorizonPadAudioProcessorEditor)
 };

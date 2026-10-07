@@ -72,6 +72,8 @@ target_sources(HorizonPad PRIVATE
     Source/presets/UserPresetStore.cpp
 
     Source/gui/HorizonLookAndFeel.cpp
+    Source/gui/HorizonScene.cpp
+    Source/gui/AnimatedKnob.cpp
     Source/gui/TitleBanner.cpp
     Source/gui/PresetBar.cpp
     Source/gui/PadKnob.cpp
@@ -127,88 +129,117 @@ target_link_libraries(HorizonPad
 #     a static library itself doesn't pull them in - the final linked
 #     executable has to supply them).
 # ---------------------------------------------------------------------------
+# Shared setup for the tools that link the plugin's shared code (see above).
+function(horizon_configure_tool tool_target)
+    target_include_directories(${tool_target} PRIVATE
+        Source
+        "${CMAKE_CURRENT_BINARY_DIR}/HorizonPad_artefacts/JuceLibraryCode"
+        "${juce_SOURCE_DIR}/modules")
+
+    target_compile_definitions(${tool_target} PRIVATE
+        JUCE_DISPLAY_SPLASH_SCREEN=0
+        JUCE_REPORT_APP_USAGE=0
+        JUCE_USE_CURL=0
+        JUCE_WEB_BROWSER=0
+        JUCE_VST3_CAN_REPLACE_VST2=0
+        JUCE_STRICT_REFCOUNTEDPOINTER=1
+        JUCE_MODULE_AVAILABLE_juce_audio_basics=1
+        JUCE_MODULE_AVAILABLE_juce_audio_devices=1
+        JUCE_MODULE_AVAILABLE_juce_audio_formats=1
+        JUCE_MODULE_AVAILABLE_juce_audio_processors=1
+        JUCE_MODULE_AVAILABLE_juce_audio_utils=1
+        JUCE_MODULE_AVAILABLE_juce_core=1
+        JUCE_MODULE_AVAILABLE_juce_data_structures=1
+        JUCE_MODULE_AVAILABLE_juce_dsp=1
+        JUCE_MODULE_AVAILABLE_juce_events=1
+        JUCE_MODULE_AVAILABLE_juce_graphics=1
+        JUCE_MODULE_AVAILABLE_juce_gui_basics=1
+        JUCE_MODULE_AVAILABLE_juce_gui_extra=1
+        # PluginProcessor.h's getName() override returns JucePlugin_Name inline;
+        # a handful of other JucePlugin_* macros are referenced the same way
+        # across Source/. These mirror the values juce_add_plugin() generates
+        # for the real plugin targets above (PRODUCT_NAME / COMPANY_NAME /
+        # PLUGIN_CODE / PLUGIN_MANUFACTURER_CODE / IS_SYNTH), so this tool's
+        # translation units see identical values to PluginProcessor.cpp's.
+        "JucePlugin_Name=\"Horizon Pad\""
+        "JucePlugin_Desc=\"Horizon Pad\""
+        "JucePlugin_Manufacturer=\"Quelle Music\""
+        JucePlugin_ManufacturerCode=0x51756d75
+        JucePlugin_PluginCode=0x487a7064
+        JucePlugin_VersionCode=0x10000
+        "JucePlugin_VersionString=\"1.0.0\""
+        JucePlugin_Version=1.0.0
+        JucePlugin_IsSynth=1
+        JucePlugin_WantsMidiInput=1
+        JucePlugin_ProducesMidiOutput=0
+        JucePlugin_IsMidiEffect=0
+        JucePlugin_EditorRequiresKeyboardFocus=0
+        JucePlugin_Build_VST3=1
+        JucePlugin_Build_Standalone=1
+        JucePlugin_Build_VST=0
+        JucePlugin_Build_AU=0
+        JucePlugin_Build_AUv3=0
+        JucePlugin_Build_AAX=0
+        JucePlugin_Build_LV2=0
+        JucePlugin_Build_Unity=0
+        JucePlugin_VSTUniqueID=JucePlugin_PluginCode
+        JucePlugin_VSTCategory=kPlugCategSynth
+        "JucePlugin_Vst3Category=\"Instrument|Synth\""
+        "JucePlugin_AUMainType='aumu'"
+        JucePlugin_AUSubType=JucePlugin_PluginCode
+        JucePlugin_AUManufacturerCode=JucePlugin_ManufacturerCode
+        JucePlugin_AUExportPrefix=Horizon_PadAU
+        "JucePlugin_AUExportPrefixQuoted=\"Horizon_PadAU\""
+        JucePlugin_CFBundleIdentifier=com.quellemusic.horizonpad
+        JucePlugin_AAXIdentifier=com.quellemusic.horizonpad
+        JucePlugin_AAXManufacturerCode=JucePlugin_ManufacturerCode
+        JucePlugin_AAXProductId=JucePlugin_PluginCode
+        JucePlugin_AAXCategory=2048
+        JucePlugin_AAXDisableBypass=0
+        JucePlugin_AAXDisableMultiMono=0
+        JucePlugin_VSTNumMidiInputs=16
+        JucePlugin_VSTNumMidiOutputs=16
+        JucePlugin_Enable_ARA=0
+        JucePlugin_ARAContentTypes=0
+        JucePlugin_ARATransformationFlags=0
+        "JucePlugin_ARAFactoryID=\"com.quellemusic.horizonpad.arafactory.1.0.0\""
+        "JucePlugin_ARADocumentArchiveID=\"com.quellemusic.horizonpad.aradocumentarchive.1\""
+        "JucePlugin_ARACompatibleArchiveIDs=\"\""
+        "JucePlugin_ManufacturerWebsite=\"\""
+        "JucePlugin_ManufacturerEmail=\"\"")
+
+    target_compile_features(${tool_target} PRIVATE cxx_std_17)
+
+    target_link_libraries(${tool_target} PRIVATE HorizonPad)
+
+    # HorizonPad (SharedCode)'s own object compiles depend (order-only) on the
+    # generated JuceHeader.h; make sure it exists before we compile Main.cpp too
+    # (target_link_libraries alone only orders the *link* step, not our own
+    # source compilation, against HorizonPad).
+    add_dependencies(${tool_target} HorizonPad)
+
+
+    if (APPLE)
+        target_link_libraries(${tool_target} PRIVATE
+            "-framework Cocoa"
+            "-framework Foundation"
+            "-framework IOKit"
+            "-framework Security"
+            "-framework QuartzCore"
+            "-framework Accelerate"
+            "-framework AudioToolbox"
+            "-framework CoreAudio"
+            "-framework CoreMIDI"
+            "-framework CoreAudioKit"
+            "-framework DiscRecording"
+            "-weak_framework Metal"
+            "-weak_framework MetalKit"
+            "-framework WebKit")
+    endif()
+endfunction()
+
 add_executable(HorizonPadSoundTool tools/sound_tool/Main.cpp)
-
-target_include_directories(HorizonPadSoundTool PRIVATE
-    Source
-    "${CMAKE_CURRENT_BINARY_DIR}/HorizonPad_artefacts/JuceLibraryCode"
-    "${juce_SOURCE_DIR}/modules")
-
-target_compile_definitions(HorizonPadSoundTool PRIVATE
-    JUCE_DISPLAY_SPLASH_SCREEN=0
-    JUCE_REPORT_APP_USAGE=0
-    JUCE_USE_CURL=0
-    JUCE_WEB_BROWSER=0
-    JUCE_VST3_CAN_REPLACE_VST2=0
-    JUCE_STRICT_REFCOUNTEDPOINTER=1
-    JUCE_MODULE_AVAILABLE_juce_audio_basics=1
-    JUCE_MODULE_AVAILABLE_juce_audio_devices=1
-    JUCE_MODULE_AVAILABLE_juce_audio_formats=1
-    JUCE_MODULE_AVAILABLE_juce_audio_processors=1
-    JUCE_MODULE_AVAILABLE_juce_audio_utils=1
-    JUCE_MODULE_AVAILABLE_juce_core=1
-    JUCE_MODULE_AVAILABLE_juce_data_structures=1
-    JUCE_MODULE_AVAILABLE_juce_dsp=1
-    JUCE_MODULE_AVAILABLE_juce_events=1
-    JUCE_MODULE_AVAILABLE_juce_graphics=1
-    JUCE_MODULE_AVAILABLE_juce_gui_basics=1
-    JUCE_MODULE_AVAILABLE_juce_gui_extra=1
-    # PluginProcessor.h's getName() override returns JucePlugin_Name inline;
-    # a handful of other JucePlugin_* macros are referenced the same way
-    # across Source/. These mirror the values juce_add_plugin() generates
-    # for the real plugin targets above (PRODUCT_NAME / COMPANY_NAME /
-    # PLUGIN_CODE / PLUGIN_MANUFACTURER_CODE / IS_SYNTH), so this tool's
-    # translation units see identical values to PluginProcessor.cpp's.
-    "JucePlugin_Name=\"Horizon Pad\""
-    "JucePlugin_Desc=\"Horizon Pad\""
-    "JucePlugin_Manufacturer=\"Quelle Music\""
-    JucePlugin_ManufacturerCode=0x51756d75
-    JucePlugin_PluginCode=0x487a7064
-    JucePlugin_VersionCode=0x10000
-    "JucePlugin_VersionString=\"1.0.0\""
-    JucePlugin_Version=1.0.0
-    JucePlugin_IsSynth=1
-    JucePlugin_WantsMidiInput=1
-    JucePlugin_ProducesMidiOutput=0
-    JucePlugin_IsMidiEffect=0
-    JucePlugin_EditorRequiresKeyboardFocus=0
-    JucePlugin_Build_VST3=1
-    JucePlugin_Build_Standalone=1
-    JucePlugin_Build_VST=0
-    JucePlugin_Build_AU=0
-    JucePlugin_Build_AUv3=0
-    JucePlugin_Build_AAX=0
-    JucePlugin_Build_LV2=0
-    JucePlugin_Build_Unity=0
-    JucePlugin_VSTUniqueID=JucePlugin_PluginCode
-    JucePlugin_VSTCategory=kPlugCategSynth
-    "JucePlugin_Vst3Category=\"Instrument|Synth\""
-    "JucePlugin_AUMainType='aumu'"
-    JucePlugin_AUSubType=JucePlugin_PluginCode
-    JucePlugin_AUManufacturerCode=JucePlugin_ManufacturerCode
-    JucePlugin_AUExportPrefix=Horizon_PadAU
-    "JucePlugin_AUExportPrefixQuoted=\"Horizon_PadAU\""
-    JucePlugin_CFBundleIdentifier=com.quellemusic.horizonpad
-    JucePlugin_AAXIdentifier=com.quellemusic.horizonpad
-    JucePlugin_AAXManufacturerCode=JucePlugin_ManufacturerCode
-    JucePlugin_AAXProductId=JucePlugin_PluginCode
-    JucePlugin_AAXCategory=2048
-    JucePlugin_AAXDisableBypass=0
-    JucePlugin_AAXDisableMultiMono=0
-    JucePlugin_VSTNumMidiInputs=16
-    JucePlugin_VSTNumMidiOutputs=16
-    JucePlugin_Enable_ARA=0
-    JucePlugin_ARAContentTypes=0
-    JucePlugin_ARATransformationFlags=0
-    "JucePlugin_ARAFactoryID=\"com.quellemusic.horizonpad.arafactory.1.0.0\""
-    "JucePlugin_ARADocumentArchiveID=\"com.quellemusic.horizonpad.aradocumentarchive.1\""
-    "JucePlugin_ARACompatibleArchiveIDs=\"\""
-    "JucePlugin_ManufacturerWebsite=\"\""
-    "JucePlugin_ManufacturerEmail=\"\"")
-
-target_compile_features(HorizonPadSoundTool PRIVATE cxx_std_17)
-
-target_link_libraries(HorizonPadSoundTool PRIVATE HorizonPad)
+horizon_configure_tool(HorizonPadSoundTool)
 
 # Real-time safety (playbook rule 35): build the tool with RealtimeSanitizer so
 # the test suite runs every processBlock as a real-time context. Needs an
@@ -222,30 +253,12 @@ if (HORIZON_RTSAN)
     target_link_options(HorizonPadSoundTool PRIVATE -fsanitize=realtime)
 endif()
 
-# HorizonPad (SharedCode)'s own object compiles depend (order-only) on the
-# generated JuceHeader.h; make sure it exists before we compile Main.cpp too
-# (target_link_libraries alone only orders the *link* step, not our own
-# source compilation, against HorizonPad).
-add_dependencies(HorizonPadSoundTool HorizonPad)
-
-
-if (APPLE)
-    target_link_libraries(HorizonPadSoundTool PRIVATE
-        "-framework Cocoa"
-        "-framework Foundation"
-        "-framework IOKit"
-        "-framework Security"
-        "-framework QuartzCore"
-        "-framework Accelerate"
-        "-framework AudioToolbox"
-        "-framework CoreAudio"
-        "-framework CoreMIDI"
-        "-framework CoreAudioKit"
-        "-framework DiscRecording"
-        "-weak_framework Metal"
-        "-weak_framework MetalKit"
-        "-framework WebKit")
-endif()
+# HorizonPadGuiSnapshot (tools/gui_snapshot/Main.cpp): the editor rendered
+# offscreen to PNG at any parameter state, with real audio behind its meters -
+# the GUI's counterpart to the sound tool. Not built by default or in CI:
+#   cmake --build build-release --target HorizonPadGuiSnapshot
+add_executable(HorizonPadGuiSnapshot EXCLUDE_FROM_ALL tools/gui_snapshot/Main.cpp)
+horizon_configure_tool(HorizonPadGuiSnapshot)
 
 # ---------------------------------------------------------------------------
 # Tests (G6)
