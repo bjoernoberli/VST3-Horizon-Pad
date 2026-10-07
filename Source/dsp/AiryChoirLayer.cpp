@@ -102,6 +102,14 @@ void AiryChoirLayer::renderVoice (int voiceIndex, juce::AudioBuffer<float>& targ
     const auto level = 0.22f * v.velocity;  // v1's level, back with v1's two-pole LP (2026-10-07)
     const auto noteFreq = bentFrequency (v.frequency);
 
+    // Shimmer send rolls off above C5 (2026-10-07): the default patch's C6
+    // chord lost to v1 in both blind A/B passes, and at C6 Expanse measured
+    // +28 dB at 5-12 kHz against v1 - its octave-up shimmer, now that the
+    // register work keeps Expanse audible up there. The dry layer stays (the
+    // owner preferred v2's Expanse at C7); only the shimmer recedes.
+    const auto octavesAboveC5 = juce::jmax (0.0f, std::log2 (noteFreq / kShimmerRolloffFromHz));
+    const auto shimmerSend = juce::Decibels::decibelsToGain (-kShimmerRolloffDbPerOctave * octavesAboveC5);
+
     // Register pinning (see the header): below C4 the stack sounds in the
     // octave(s) nearest the one it was voiced in, crossfaded equal-power
     // between the octave below and above that point. Worked out from the
@@ -173,7 +181,7 @@ void AiryChoirLayer::renderVoice (int voiceIndex, juce::AudioBuffer<float>& targ
         right[n] += sweptR * gain * 0.55f;
 
         if (n < shimmerLen)
-            shimmerIn[n] += 0.5f * (sweptL + sweptR) * gain;
+            shimmerIn[n] += 0.5f * (sweptL + sweptR) * gain * shimmerSend;
     }
 }
 

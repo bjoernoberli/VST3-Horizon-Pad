@@ -229,6 +229,15 @@ rendering at any sample rate/block size, writing a WAV for manual listening).
 This is the fastest way to verify a DSP change didn't introduce clipping,
 NaN/Inf, or a stepping/zipper artifact, without opening a DAW.
 
+### Offline GUI snapshots
+
+`HorizonPadGuiSnapshot` (`cmake --build build-release --target HorizonPadGuiSnapshot`,
+not built by default) renders the real editor offscreen to PNG, with real
+audio behind its meters: any preset or parameter state, held notes, a preset
+recall at a chosen moment, frame sequences of an animation, and a sheet of
+the ring knob's hover and drag states. It echoes the rendered state as JSON.
+Run it with `--help`.
+
 ---
 
 ## Testing and validating
@@ -244,7 +253,7 @@ cmake --build build-release --target HorizonPadSoundTool -j 8
 ctest --test-dir build-release --output-on-failure
 ```
 
-Twenty tests, about a minute, driving the real plugin DSP through
+Twenty-two tests, about a minute, driving the real plugin DSP through
 `HorizonPadSoundTool` ([`tools/tests/dsp_tests.py`](tools/tests/dsp_tests.py)).
 Five assert end-to-end properties — zero reported latency, bit-identical
 renders from a seeded reset, all 36 sample-rate × block-size combinations
@@ -448,7 +457,8 @@ Source/
   PluginProcessor.{h,cpp}          APVTS, voice allocation/stealing, state,
                                     A/B buffers, programs
   PluginEditor.{h,cpp}             Fixed 1080x748 layout, pixel-accurate to
-                                    the design handoff
+                                    the design handoff; the frame loop that
+                                    drives every animation
   dsp/
     HorizonTypes.h                 kNumLayers/kMaxVoices/kNumGlobalParams etc.
     PerformanceState.h             Lock-free PITCH/MOD (not host parameters)
@@ -463,10 +473,14 @@ Source/
     Presets.{h,cpp}                17 factory programs (9 pads, 5 in-between, 3 leads) + parameter IDs
     UserPresetStore.{h,cpp}        On-disk user preset library (message-thread only)
   gui/
-    HorizonLookAndFeel.{h,cpp}     Palette, typography, shared panel/card painters
-    TitleBanner.{h,cpp}            Logo, wordmark
+    HorizonLookAndFeel.{h,cpp}     Palette, typography, ring knob and card painters
+    HorizonScene.{h,cpp}           The sunset panel: FILTER sets the time of day,
+                                    REVERB the haze, WIDTH the glow's spread
+    Motion.h                       Spring and follower used by every animation
+    AnimatedKnob.{h,cpp}           Ring knob that glides to new values, with hover/drag glow
+    TitleBanner.{h,cpp}            Logo, wordmark, recalled preset's title, sunrise on open
     PresetBar.{h,cpp}              Factory + user presets, save flow, A/B buffers
-    PadKnob.{h,cpp}                One layer's VOL knob
+    PadKnob.{h,cpp}                One layer's VOL knob, glowing with the layer's level
     MacrosPanel.{h,cpp}            ATTACK/RELEASE/FILTER/REVERB/WIDTH/DETUNE
     WheelSlider.{h,cpp}            PITCH/MOD wheels
     OutputMeter.{h,cpp}            Live output level (read-only)
@@ -474,6 +488,7 @@ Source/
 tools/
   install_plugin.sh                Local dev build+install to ~/Library/Audio/Plug-Ins/VST3
   sound_tool/Main.cpp              HorizonPadSoundTool - offline DSP render+analysis CLI
+  gui_snapshot/Main.cpp            HorizonPadGuiSnapshot - the editor rendered offscreen to PNG
   tests/dsp_tests.py               The CTest suite (G6)
   measure/                         G3/G5 measurement scripts
     alias_check.py                 Alias floor, by 48 vs 192 kHz comparison

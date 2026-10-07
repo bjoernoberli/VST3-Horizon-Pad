@@ -293,6 +293,15 @@ Results and measurements in [`gate-status.md`](gate-status.md); decisions:
   Lagerfeuer. In-between presets: "the main place to be are harmonies".
 - **EX-003 closed**: the owner judged v2's top octave usable and v1's not.
 
+### A-008 - from the second blind listening pass (2026-10-07)
+
+Results in [`gate-status.md`](gate-status.md). The first pass's changes held up (four
+items flipped to the candidate, two became inaudible). From the remaining verdicts and
+notes: Root's bass starts near its opened tone and sits brighter below C3; Expanse's
+shimmer send rolls off above C5 (the C6 chord); DETUNE's drift grows only to 1.5x at
+100% ("a bit seasick at max"); the default patch stays at DETUNE 0% (the comparison
+was a tie). Proposal P6 (contour-keeping pinning for Expanse) is open for the owner.
+
 ## Where the exceptions go
 
 12.5 requires a written, dated, named exception whenever a measurement fails and the

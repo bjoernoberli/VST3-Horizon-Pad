@@ -1,0 +1,25 @@
+{
+ "session": {"baseline": "v1 bf17ee8", "candidate": "main b57b808 (listening-pass changes of 2026-10-07)", "seed": 7, "target_lufs": -20},
+ "answered_at": "2026-10-06T22:16:20.369Z",
+ "items": [
+  {"id": "blend_mid", "x_correct": true, "preferred": "candidate", "notes": ""},
+  {"id": "root_chord", "x_correct": true, "preferred": "candidate", "notes": ""},
+  {"id": "clearing_chord", "x_correct": true, "preferred": "candidate", "notes": ""},
+  {"id": "expanse_chord", "x_correct": false, "preferred": "candidate", "notes": ""},
+  {"id": "bloom_chord", "x_correct": true, "preferred": "candidate", "notes": ""},
+  {"id": "low_fifth", "x_correct": true, "preferred": "baseline", "notes": ""},
+  {"id": "low_triad", "x_correct": true, "preferred": "candidate", "notes": ""},
+  {"id": "root_low_notes", "x_correct": true, "preferred": "candidate", "notes": "first few seconds i dont like, but then the tone changes and i like it. it happens on both 1 and 2"},
+  {"id": "expanse_bassline", "x_correct": true, "preferred": "candidate", "notes": "2 is c3 g2 c3. (2 was the candidate)"},
+  {"id": "clearing_top", "x_correct": true, "preferred": "candidate", "notes": ""},
+  {"id": "preset_bergecho", "x_correct": true, "preferred": "candidate", "notes": ""},
+  {"id": "preset_steinerne_ruhe", "x_correct": false, "preferred": "candidate", "notes": ""},
+  {"id": "expanse_top", "x_correct": true, "preferred": "candidate", "notes": "theres a lot going on on 1 on the lower register. not good. (1 was the baseline)"},
+  {"id": "blend_high", "x_correct": true, "preferred": "baseline", "notes": ""},
+  {"id": "preset_lagerfeuer", "x_correct": true, "preferred": "candidate", "notes": ""},
+  {"id": "preset_daemmerlicht", "x_correct": true, "preferred": "baseline", "notes": ""},
+  {"id": "preset_sternenzelt", "x_correct": true, "preferred": "candidate", "notes": ""},
+  {"id": "detune_tight", "x_correct": true, "preferred": "baseline", "notes": "same audio pair as blend_mid this pass (default patch is DETUNE 0%)"},
+  {"id": "detune_wide", "x_correct": true, "preferred": "baseline", "notes": "a bit seasick at max."}
+ ]
+}

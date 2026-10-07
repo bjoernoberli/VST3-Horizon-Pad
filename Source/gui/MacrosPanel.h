@@ -1,6 +1,6 @@
 #pragma once
 
-#include "HorizonLookAndFeel.h"
+#include "AnimatedKnob.h"
 #include "../dsp/HorizonTypes.h"
 
 class HorizonPadAudioProcessor;
@@ -20,15 +20,24 @@ public:
     explicit MacrosPanel (HorizonPadAudioProcessor&);
     ~MacrosPanel() override;
 
+    /** One editor frame: every knob's glide and fades. */
+    void advance (double now, float dt);
+
+    /** Starts the recall wave (or, with fromZero, the sunrise sweep) at
+        `startTime`, one row after another, top to bottom. */
+    void beginWave (double startTime, double rowDelay, bool fromZero);
+
     void paint (juce::Graphics&) override;
     void resized() override;
 
 private:
     struct Knob
     {
-        juce::Slider slider { juce::Slider::RotaryHorizontalVerticalDrag, juce::Slider::NoTextBox };
+        AnimatedKnob slider { 5 };
         std::unique_ptr<juce::AudioProcessorValueTreeState::SliderAttachment> attachment;
         juce::String caption;
+        juce::Colour accent;
+        juce::Rectangle<int> valueCell;   // where its readout is drawn (set in resized())
     };
 
     void setUpKnob (Knob& knob, const juce::String& caption, const juce::String& tooltip, const char* paramId,

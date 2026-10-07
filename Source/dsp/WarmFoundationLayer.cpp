@@ -61,6 +61,17 @@ void WarmFoundationLayer::renderVoice (int voiceIndex, juce::AudioBuffer<float>&
     const auto level = 0.20f * v.velocity;
     const auto tracking = keyTrack (baseFreq, kCutoffTrackingBelowC4, kCutoffTrackingAboveC4);
 
+    // The cutoff opens with the envelope - the swell that is Root's character in
+    // the middle register. In the bass, tracked down, it started as a dull hum
+    // for the first seconds (centroid ~80-100 Hz at C1/C2, the harmonics arriving
+    // 6-12 dB later); the owner disliked that start and liked the opened tone
+    // (owner's second blind A/B, 2026-10-07 (docs/gate-status.md)). Below C3 the cutoff now starts near
+    // where the envelope settles: the envelope term moves towards the sustain
+    // level by up to kBassOnsetLift, fading out by C3. Sustain is unchanged.
+    const auto bassness = 1.0f - registerBlend (baseFreq, kBassOnsetFullHz, kBassOnsetNoneHz);
+    const auto onsetLift = kBassOnsetLift * bassness;
+    const auto sustainForCutoff = sustainLevel();
+
     // The sub sits an octave below the note. Below ~45 Hz it is rumble a PA
     // high-passes anyway and mud in a room: at C2 it is 32.7 Hz, where it
     // made Root's centroid 55 Hz (review S-2/S-4). Fade it from full at
@@ -123,8 +134,12 @@ void WarmFoundationLayer::renderVoice (int voiceIndex, juce::AudioBuffer<float>&
         vs.breathePhase = wrapPhase (vs.breathePhase + 0.13f * invSr);
         const auto breathe = std::sin (vs.breathePhase * juce::MathConstants<float>::twoPi) * 0.22f + 0.78f;
 
+        const auto envForCutoff = envGain < sustainForCutoff
+                                      ? envGain + onsetLift * (sustainForCutoff - envGain)
+                                      : envGain;
         const auto cutoff = juce::jlimit (40.0f, (float) (sampleRate * 0.45),
-                                          (350.0f + envGain * 900.0f) * breathe * brightness * tracking);
+                                          (350.0f + envForCutoff * 900.0f) * breathe * brightness * tracking
+                                              * (1.0f + kBassBrightLift * bassness));
         vs.filter.setCutoffFrequency (cutoff);
 
         const auto gain = envGain * level * stealGain;

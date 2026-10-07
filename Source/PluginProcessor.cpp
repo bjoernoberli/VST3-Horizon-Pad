@@ -248,6 +248,15 @@ void HorizonPadAudioProcessor::prepareToPlay (double sampleRate, int samplesPerB
     dcBlockerX1.fill (0.0f);
     dcBlockerY1.fill (0.0f);
 
+    meterWindowSamples = juce::jmax (1, juce::roundToInt (sampleRate * kMeterWindowSeconds));
+    meterSampleCount = 0;
+    outputSumSquares = 0.0f;
+    layerSumSquares.fill (0.0f);
+    outputLevel.store (0.0f, std::memory_order_relaxed);
+
+    for (auto& level : layerLevels)
+        level.store (0.0f, std::memory_order_relaxed);
+
     allNotesOff (true);
 }
 
@@ -300,10 +309,16 @@ void HorizonPadAudioProcessor::setCurrentProgram (int index)
         return;
 
     currentProgram.store (index);
-    applyPreset (presets[(size_t) index]);
 
+    // The active-preset fields are set before the counter moves, and the
+    // counter before any parameter does, so an editor that sees the new
+    // count reads the right preset name and catches every knob before it
+    // starts to glide (see getPresetRecallCount()).
     activePresetKind.store ((int) PresetKind::factory, std::memory_order_relaxed);
     activePresetIndex.store (index, std::memory_order_relaxed);
+    presetRecallCount.fetch_add (1, std::memory_order_release);
+
+    applyPreset (presets[(size_t) index]);
 
     sendChangeMessage();
 }
@@ -375,6 +390,7 @@ void HorizonPadAudioProcessor::switchBuffer (int index)
     // parameterChanged() callbacks those changes trigger update the buffer we
     // just switched to, not the one we're switching away from.
     activeBufferIndex.store (index, std::memory_order_relaxed);
+    bufferSwitchCount.fetch_add (1, std::memory_order_release);
 
     const auto& snapshot = buffers[(size_t) index];
 
@@ -464,6 +480,12 @@ void HorizonPadAudioProcessor::applyUserPreset (int index)
     // freezeBrightnessRequested's doc comment.
     freezeBrightnessRequested.store (true, std::memory_order_release);
 
+    // Same order as setCurrentProgram(): active-preset fields, then the
+    // recall counter, then the parameters.
+    activePresetKind.store ((int) PresetKind::user, std::memory_order_relaxed);
+    activePresetIndex.store (index, std::memory_order_relaxed);
+    presetRecallCount.fetch_add (1, std::memory_order_release);
+
     auto setParam = [&] (const char* id, float value)
     {
         if (auto* p = apvts.getParameter (id))
@@ -479,9 +501,6 @@ void HorizonPadAudioProcessor::applyUserPreset (int index)
     // Wheels spring back to rest on a preset change, like a real keyboard.
     performanceState.setPitchBendSemitones (0.0f);
     performanceState.setModAmount (0.0f);
-
-    activePresetKind.store ((int) PresetKind::user, std::memory_order_relaxed);
-    activePresetIndex.store (index, std::memory_order_relaxed);
 
     sendChangeMessage();
 }
@@ -669,6 +688,7 @@ void HorizonPadAudioProcessor::renderSegment (juce::AudioBuffer<float>& output, 
         const auto* srcL = layerBuffer.getReadPointer (0);
         const auto* srcR = layerBuffer.getReadPointer (1);
         auto& gain = layerGain[(size_t) i];
+        auto sumSquares = 0.0f;
 
         for (int n = 0; n < numSamples; ++n)
         {
@@ -677,7 +697,13 @@ void HorizonPadAudioProcessor::renderSegment (juce::AudioBuffer<float>& output, 
 
             if (outR != nullptr)
                 outR[n] += srcR[n] * g;
+
+            // The editor's per-pad level glow (see layerLevels); the mix
+            // above is written exactly as before, this only reads.
+            sumSquares += (srcL[n] * srcL[n] + srcR[n] * srcR[n]) * (g * g);
         }
+
+        layerSumSquares[(size_t) i] += sumSquares;
     }
 }
 
@@ -824,8 +850,36 @@ void HorizonPadAudioProcessor::processBlock (juce::AudioBuffer<float>& buffer, j
         }
     }
 
-    if (buffer.getNumChannels() > 0)
-        outputLevel.store (buffer.getRMSLevel (0, 0, numSamples), std::memory_order_relaxed);
+    // --- Meters for the editor: accumulate, publish once per window.
+    const auto meterChannels = juce::jmin (2, buffer.getNumChannels());
+
+    for (int ch = 0; ch < meterChannels; ++ch)
+    {
+        const auto* data = buffer.getReadPointer (ch);
+
+        for (int n = 0; n < numSamples; ++n)
+            outputSumSquares += data[n] * data[n];
+    }
+
+    meterSampleCount += numSamples;
+
+    if (meterSampleCount >= meterWindowSamples)
+    {
+        // Layers are always rendered in stereo; the output may be mono.
+        const auto perLayerSample = 1.0f / (2.0f * (float) meterSampleCount);
+        const auto perOutputSample = 1.0f / ((float) juce::jmax (1, meterChannels) * (float) meterSampleCount);
+
+        outputLevel.store (std::sqrt (outputSumSquares * perOutputSample), std::memory_order_relaxed);
+
+        for (size_t i = 0; i < layerLevels.size(); ++i)
+        {
+            layerLevels[i].store (std::sqrt (layerSumSquares[i] * perLayerSample), std::memory_order_relaxed);
+            layerSumSquares[i] = 0.0f;
+        }
+
+        outputSumSquares = 0.0f;
+        meterSampleCount = 0;
+    }
 }
 
 //==============================================================================

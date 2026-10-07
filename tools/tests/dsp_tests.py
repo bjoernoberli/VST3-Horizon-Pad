@@ -285,6 +285,57 @@ def test_startup_program_matches_defaults():
         raise Fail(f"the plugin opens on {name!r} but plays different values: {off}")
 
 
+def _centroid_hz(x, sr):
+    m = x.mean(axis=1)
+    spec = np.abs(np.fft.rfft(m * np.hanning(len(m))))
+    f = np.fft.rfftfreq(len(m), 1 / sr)
+    return float((spec * f).sum() / spec.sum())
+
+
+def test_root_bass_starts_open():
+    """Root's bass notes start near their opened tone, not as a dull hum.
+
+    Root's cutoff opens with the envelope. Tracked down into the bass, the first
+    seconds were only fundamental and sub; the owner disliked them and liked the
+    tone once it opened (blind A/B, 2026-10-07). Below C3 the cutoff now starts
+    near its sustained brightness and sits a little brighter. Measured: early
+    (0.2-0.8 s) centroid at C2, median of five seeds - 99 Hz without the fix,
+    146 Hz with it.
+    """
+    early = []
+    for seed in (3, 4, 5, 6, 7):
+        x, sr = render(["--solo=root", "--notes=36", f"--seed={seed}", "--param=reverb=0",
+                        "--hold=3", "--tail=0.2"])
+        early.append(_centroid_hz(window(x, sr, 0.2, 0.8), sr))
+    med = float(np.median(early))
+    if med < 125.0:
+        raise Fail(f"Root at C2 starts dull: early centroid {med:.0f} Hz (median), expected >= 125 Hz")
+
+
+def test_expanse_shimmer_recedes_at_top():
+    """Expanse's octave-up shimmer rolls off above C5.
+
+    With the register work Expanse stays audible at the top, and at C6 its
+    shimmer made the default patch's C6 chord too bright (lost to v1 in both
+    blind A/B passes; +28 dB at 5-12 kHz on Expanse). The shimmer send now
+    falls 9 dB per octave above C5. Measured at C6, shimmer octave against the
+    stack octave: -13.1 dB without the roll-off, -22.1 dB with it.
+    """
+    x, sr = render(["--solo=expanse", "--notes=84", "--seed=3", "--param=reverb=0",
+                    "--hold=6", "--tail=0.2"])
+    m = window(x, sr, 3.0, 6.0).mean(axis=1)
+    spec = np.abs(np.fft.rfft(m * np.hanning(len(m)))) ** 2
+    f = np.fft.rfftfreq(len(m), 1 / sr)
+    f0 = 440.0 * 2 ** ((84 - 69) / 12)
+
+    def band(c):
+        return 10 * np.log10(spec[(f >= c / 1.06) & (f < c * 1.06)].sum() + 1e-20)
+
+    rel = band(4 * f0) - band(2 * f0)
+    if rel > -17.5:
+        raise Fail(f"Expanse's shimmer at C6 is {rel:.1f} dB against its stack, expected <= -17.5 dB")
+
+
 def test_keyboard_level_span():
     """No layer loses its level across the played range, C2 to C6.
 

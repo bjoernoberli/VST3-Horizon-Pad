@@ -89,6 +89,8 @@ private:
         at C4) - the two reverbs' internal gains differ. Matched by
         measurement to the prototype's octave-to-fundamental ratio. */
     static constexpr float kShimmerBlend = 0.16f;
+    static constexpr float kShimmerRolloffFromHz = 523.25f;      // C5
+    static constexpr float kShimmerRolloffDbPerOctave = 9.0f;
 
     /** Below this note the stack stays pinned near the octave it was voiced
         in (see the class comment). */

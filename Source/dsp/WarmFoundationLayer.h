@@ -58,6 +58,17 @@ private:
     static constexpr float kCutoffTrackingBelowC4 = 0.5f;  // 0.8 until 2026-10-07: low chords too dark (owner's blind A/B of 2026-10-06 (docs/gate-status.md))
     static constexpr float kCutoffTrackingAboveC4 = 0.5f;
 
+    /** Bass onset (see renderVoice): how far below C3 the cutoff's envelope term
+        is lifted towards the sustain level - full at C2 and below, none at C3. */
+    static constexpr float kBassOnsetLift = 0.7f;
+    /** ...and how much brighter the bass sits overall: the owner liked the tone
+        once the breathe LFO opened it, so below C3 the cutoff is lifted towards
+        that state, as far as the C2 roughness limit allows (test
+        low_register_stays_musical). */
+    static constexpr float kBassBrightLift = 0.40f;
+    static constexpr float kBassOnsetFullHz = 65.41f;   // C2
+    static constexpr float kBassOnsetNoneHz = 130.81f;  // C3
+
     struct VoiceState
     {
         std::array<float, kNumOscs> phase {};

@@ -173,6 +173,31 @@ worktree of `05c3f44`):
   render to -1 dBTP and measures the decode (AAC overshoot <= 0.1 dB, MP3 no clipped
   samples), and the -14 LUFS peak is reported, not judged. PLR 11.4-13.6 dB.
 
+## Listening pass 2, 2026-10-07 - results and what they changed
+
+Same page and items against v1, candidate = the build with the first pass's changes
+(`b57b808`); verdicts in `docs/listening/2026-10-07-verdicts.json`.
+
+**The first pass's changes worked.** Root solo at WIDTH 100%, Bloom chord, the C2 close
+triad and Sternenzelt at WIDTH 100% flipped to the candidate; on the Expanse chord and
+Steinerne Ruhe X was no longer identified - the differences fell below audibility. The
+blends, Clearing, Lagerfeuer and the register fixes stayed with the candidate; the note
+on v1's top octave ("a lot going on in the lower register") is the aliasing EX-003 was
+about.
+
+| Still or newly v1 / open | What it changed (2026-10-07, second round) |
+|---|---|
+| C6 chord, default patch (v1, 2nd pass running) | Expanse's shimmer send rolls off 9 dB/octave above C5: at C6 Expanse measured +28 dB at 5-12 kHz against v1, the octave-up shimmer. Chord's excess at 5-12 kHz +5.5 -> +2.2 dB; Expanse at C7 unchanged. (Lowering Root's and Bloom's top tracking was tried first and made the chord *relatively* brighter - reverted.) Test `expanse_shimmer_recedes_at_top` |
+| Root C1, C2: "first few seconds I don't like, then the tone changes and I like it - on both" | Below C3 Root's cutoff starts near its sustained brightness and sits 40% brighter (the breathing LFO's bright phase was the liked tone): early centroid at C2 99 -> 146 Hz; C3 and up unchanged. Test `root_bass_starts_open` |
+| DETUNE 100%: "a bit seasick at max" | The slow pitch drift grows to 1.5x at DETUNE 100%, not 2x; the static detune keeps its full range |
+| DETUNE 0% vs designed | **A tie.** This pass `blend_mid` and `detune_tight` were the same audio pair (the default patch is DETUNE 0%); one verdict went each way, X correct both times. The default stays at 0% |
+| C2 open fifth (v1, 2nd time) | Not changed directly; Root's bass change above brightens it - heard again next pass |
+| Daemmerlicht, WIDTH 55% (v1) | Not changed: one item, against Klarheit at WIDTH 50% preferring the candidate in pass 1 |
+| Expanse bass line: "2 is C3 G2 C3" (candidate preferred) | Explained, not changed: register pinning folds each note towards C5 by pitch class, so C2-G2-C3 sounds C5-G4-C5 and the G lands below the Cs. Folding the whole played octave instead (C2-B2 up three octaves) would keep contour inside each octave and fold at C instead - proposal P6 below |
+
+**Next pass**: the C6 chord, the C2 open fifth, Root C1/C2 (the start), DETUNE 100%,
+Daemmerlicht - regenerate the page with the recipe above.
+
 ## Listening pass, 2026-10-06 - results and what they changed
 
 The owner ran the blind A/B/X page (`tools/listening/make_session.py`): v1 (`bf17ee8`)
@@ -262,6 +287,7 @@ measurement (`dspkit.repeat_variation`) is the playbook's new A.6 descriptor.
 | P2 | **Voice-card variance.** Small fixed per-voice-slot offsets (cutoff, envelope time, tuning) so a chord's notes are never quite identical - what analog polysynths do and their reissues expose as "vintage" | Playbook I.5.1, prompted by the stock-synth fix | Chord texture, very subtly | Chord-note variance; must stay inside level and tuning JNDs |
 | P3 | **A quiet delay** in the FX chain to fill the gaps between chord changes, its feedback carrying the drift | Stock-synth fix, step 4 | Adds an effect; needs a macro or a fixed amount - brief amendment (editing stays shallow) | Gap energy between chords; mix-context listening |
 | P4 | **Tape-style softening** (gentle HF roll-off, slight wow/flutter) on the output | Stock-synth fix, step 2 | The top end and stability of everything | Centroid and modulation spectrum; blind A/B |
+| P6 | **Expanse pinning that keeps a bass line's contour.** Today each pinned note folds by pitch class towards C5, so C2-G2-C3 sounds C5-G4-C5 (the owner heard "C3 G2 C3"). Folding the whole played octave (C2-B2 up three octaves) keeps the contour inside each octave and folds only at C | Owner's note, listening pass 2 | Expanse below C4 | The `expanse_bassline` item; contour of C2-G2-C3 and of a stepwise line |
 | P5 | **Early reflections before the Freeverb tail** for a believable room (the current send has 20 ms pre-delay, deliberately, and a late-tail-weighted algorithm) | "Realistic room first" | The reverb's front | Impulse response energy in 5-80 ms; listening |
 
 Not applicable: formant de-essing, kick weight, noise-carrier air and vocal thickening

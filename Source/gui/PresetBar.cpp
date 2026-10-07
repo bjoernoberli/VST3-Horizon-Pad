@@ -4,9 +4,28 @@
 namespace horizon::ui
 {
 
+namespace
+{
+    // Highlight fade (gold in, gold out), pill grow/shrink, scroll glide.
+    constexpr float kHighlightIn = 0.07f;
+    constexpr float kHighlightOut = 0.16f;
+    constexpr float kPresenceOmega = 14.0f;   // ~0.35 s
+    constexpr float kScrollOmega = 11.0f;     // ~0.45 s
+    constexpr int kScrollEdgeRoom = 40;       // keep a scrolled-to pill clear of the edge fade
+    constexpr int kPillGap = 10;
+
+    // The ⇄ copy flash: full green for a moment, then fades.
+    constexpr double kSwapFlashHold = 0.25;
+    constexpr float kSwapFlashFade = 0.22f;
+
+    int factoryPillWidth (const juce::TextButton& b)
+    {
+        return juce::jmax (70, b.getButtonText().length() * 9 + 28);
+    }
+}
+
 //==============================================================================
-PresetBar::UserPresetPill::UserPresetPill (juce::String presetName, std::function<void()> onApply,
-                                           std::function<void()> onDelete)
+PresetBar::UserPresetPill::UserPresetPill (juce::String presetName)
     : name (std::move (presetName))
 {
     nameButton.setButtonText (name);
@@ -15,7 +34,7 @@ PresetBar::UserPresetPill::UserPresetPill (juce::String presetName, std::functio
     nameButton.setColour (juce::TextButton::buttonColourId, juce::Colours::transparentBlack);
     nameButton.setColour (juce::TextButton::textColourOffId, Palette::text);
     nameButton.setTooltip ("Recall \"" + name + "\"");
-    nameButton.onClick = std::move (onApply);
+    nameButton.onClick = [this] { if (onApply != nullptr) onApply(); };
     addAndMakeVisible (nameButton);
 
     deleteButton.setButtonText (juce::String::fromUTF8 ("\xc3\x97")); // "x"
@@ -24,17 +43,48 @@ PresetBar::UserPresetPill::UserPresetPill (juce::String presetName, std::functio
     deleteButton.setColour (juce::TextButton::buttonColourId, juce::Colours::transparentBlack);
     deleteButton.setColour (juce::TextButton::textColourOffId, Palette::cancelBorder); // was textFaint - unreadable against the pill's near-transparent background
     deleteButton.setTooltip ("Delete \"" + name + "\"");
-    deleteButton.onClick = std::move (onDelete);
+    deleteButton.onClick = [this] { if (onDelete != nullptr) onDelete(); };
     addAndMakeVisible (deleteButton);
+
+    presence.snapTo (1.0f);
 }
 
-void PresetBar::UserPresetPill::setActive (bool shouldBeActive)
+void PresetBar::UserPresetPill::snapHighlight()
 {
-    if (active == shouldBeActive)
-        return;
+    highlight.value = active ? 1.0f : 0.0f;
+    applyHighlight();
+}
 
-    active = shouldBeActive;
-    nameButton.setColour (juce::TextButton::textColourOffId, active ? Palette::gold : Palette::text);
+void PresetBar::UserPresetPill::startGrowing()
+{
+    presence.snapTo (0.0f);
+    presence.target = 1.0f;
+    setAlpha (0.0f);
+}
+
+void PresetBar::UserPresetPill::startShrinking()
+{
+    shrinking = true;
+    presence.target = 0.0f;
+    setInterceptsMouseClicks (false, false);
+}
+
+bool PresetBar::UserPresetPill::advance (float dt)
+{
+    if (highlight.advance (active ? 1.0f : 0.0f, dt, kHighlightIn, kHighlightOut, 2.0e-3f))
+        applyHighlight();
+
+    if (! presence.advance (dt, kPresenceOmega, 2.0e-3f))
+        return false;
+
+    // Mostly transparent while narrow, so the name never shows squashed.
+    setAlpha (juce::jlimit (0.0f, 1.0f, presence.value * presence.value));
+    return true;
+}
+
+void PresetBar::UserPresetPill::applyHighlight()
+{
+    nameButton.setColour (juce::TextButton::textColourOffId, Palette::text.interpolatedWith (Palette::gold, highlight.value));
     repaint();
 }
 
@@ -43,21 +93,30 @@ int PresetBar::UserPresetPill::preferredWidth() const
     return juce::jmax (70, name.length() * 9 + 28) + kDeleteButtonWidth;
 }
 
+int PresetBar::UserPresetPill::currentWidth() const
+{
+    return juce::roundToInt ((float) preferredWidth() * juce::jlimit (0.0f, 1.0f, presence.value));
+}
+
 void PresetBar::UserPresetPill::paint (juce::Graphics& g)
 {
     auto bounds = getLocalBounds().toFloat().reduced (0.5f);
-    const auto corner = bounds.getHeight() * 0.5f;
+    const auto corner = juce::jmin (bounds.getHeight(), bounds.getWidth()) * 0.5f;
+    const auto amount = highlight.value;
 
-    g.setColour (active ? Palette::pillActiveBg : Palette::pillInactiveUserBg);
+    g.setColour (Palette::pillInactiveUserBg.interpolatedWith (Palette::pillActiveBg, amount));
     g.fillRoundedRectangle (bounds, corner);
 
-    g.setColour (active ? Palette::gold : Palette::pillBorder);
+    g.setColour (Palette::pillBorder.interpolatedWith (Palette::gold, amount));
     g.drawRoundedRectangle (bounds, corner, 1.0f);
 }
 
 void PresetBar::UserPresetPill::resized()
 {
-    auto r = getLocalBounds();
+    // Laid out at full width and clipped while the pill grows or shrinks,
+    // so the name and the "x" slide rather than squash. (Full width is the
+    // preferred width less the 2 px layOutScrollContent() trims each side.)
+    auto r = getLocalBounds().withWidth (juce::jmax (getWidth(), preferredWidth() - 4));
     deleteButton.setBounds (r.removeFromRight (kDeleteButtonWidth));
     nameButton.setBounds (r);
 }
@@ -88,9 +147,14 @@ PresetBar::PresetBar (HorizonPadAudioProcessor& processorToUse)
         auto* b = presetButtons.add (new juce::TextButton (presets[(size_t) i].name));
         b->setClickingTogglesState (false);
         b->setTooltip (presets[(size_t) i].description);
+        // The highlight is drawn from "activeAmount" (see applyFactoryHighlight()),
+        // so the toggled-on colour must not add a fill of its own.
+        b->setColour (juce::TextButton::buttonOnColourId, juce::Colours::transparentBlack);
         b->onClick = [this, i] { processor.setCurrentProgram (i); refreshFromProcessor(); };
         presetScrollContent.addAndMakeVisible (b);
     }
+
+    factoryHighlights.resize ((size_t) presetButtons.size());
 
     saveButton.setClickingTogglesState (false);
     saveButton.getProperties().set ("dashedBorder", true);
@@ -159,50 +223,77 @@ PresetBar::PresetBar (HorizonPadAudioProcessor& processorToUse)
     {
         processor.copyActiveBufferToOtherBuffer();
 
-        // Brief "copied" flash - the same green used for the save-confirm
+        // A "copied" flash - the same green used for the save-confirm
         // button - since this action has no other visible effect to look at
         // (it silently overwrites the other, currently-hidden A/B slot).
-        swapButton.getProperties().set ("borderColour", (int) Palette::saveConfirmBorder.getARGB());
-        swapButton.setColour (juce::TextButton::buttonColourId, Palette::saveConfirmBg);
-        swapButton.setColour (juce::TextButton::textColourOffId, Palette::text);
-        swapButton.repaint();
-
-        juce::Component::SafePointer<PresetBar> safeThis (this);
-        juce::Timer::callAfterDelay (450, [safeThis]
-        {
-            if (safeThis == nullptr)
-                return;
-
-            auto& b = safeThis->swapButton;
-            b.getProperties().remove ("borderColour");
-            b.setColour (juce::TextButton::buttonColourId, juce::Colours::transparentBlack);
-            b.setColour (juce::TextButton::textColourOffId, Palette::textFaint);
-            b.repaint();
-        });
+        // Shown at once; the next frame times its hold and fade.
+        swapFlash.value = 1.0f;
+        swapFlashTimed = false;
+        applySwapFlash();
     };
     addAndMakeVisible (swapButton);
 
+    syncUserPresetPills();
     refreshFromProcessor();
+
+    // Open on the current state as it is: no fades, no scroll glide.
+    for (int i = 0; i < presetButtons.size(); ++i)
+    {
+        factoryHighlights[(size_t) i].value = presetButtons[i]->getToggleState() ? 1.0f : 0.0f;
+        applyFactoryHighlight (i);
+    }
+
+    for (auto* pill : userPresetPills)
+        pill->snapHighlight();
 }
 
 PresetBar::~PresetBar() = default;
 
-void PresetBar::rebuildUserPresetButtons()
+PresetBar::UserPresetPill* PresetBar::addUserPresetPill (const juce::String& name)
 {
-    userPresetPills.clear();
+    auto* pill = userPresetPills.add (new UserPresetPill (name));
 
-    const auto& userPresets = processor.getUserPresets();
-
-    for (int i = 0; i < (int) userPresets.size(); ++i)
+    // Looked up by pill, not by a captured index: a deleted pill leaves the
+    // row without a rebuild, which shifts every later index.
+    pill->onApply = [this, pill]
     {
-        auto* pill = userPresetPills.add (new UserPresetPill (
-            userPresets[(size_t) i].name,
-            [this, i] { processor.applyUserPreset (i); refreshFromProcessor(); },
-            [this, i] { processor.deleteUserPreset (i); refreshFromProcessor(); }));
-        presetScrollContent.addAndMakeVisible (pill);
+        const auto index = userPresetPills.indexOf (pill);
+
+        if (index >= 0)
+        {
+            processor.applyUserPreset (index);
+            refreshFromProcessor();
+        }
+    };
+
+    pill->onDelete = [pill] { pill->startShrinking(); };
+
+    presetScrollContent.addAndMakeVisible (pill);
+    return pill;
+}
+
+void PresetBar::syncUserPresetPills()
+{
+    const auto& userPresets = processor.getUserPresets();
+    const auto count = (int) userPresets.size();
+
+    if (count == userPresetPills.size())
+        return;
+
+    if (count == userPresetPills.size() + 1 && isShowing())
+    {
+        // Just saved (saveCurrentAsUserPreset() appends): grow its pill in.
+        addUserPresetPill (userPresets.back().name)->startGrowing();
+    }
+    else
+    {
+        userPresetPills.clear();
+
+        for (const auto& preset : userPresets)
+            addUserPresetPill (preset.name);
     }
 
-    resized();
+    layOutScrollContent();
 }
 
 void PresetBar::beginSavingNewPreset()
@@ -245,8 +336,7 @@ void PresetBar::cancelSavingNewPreset()
 
 void PresetBar::refreshFromProcessor()
 {
-    if ((int) userPresetPills.size() != (int) processor.getUserPresets().size())
-        rebuildUserPresetButtons();
+    syncUserPresetPills();
 
     const auto activeKind = processor.getActivePresetKind();
     const auto activeIndex = processor.getActivePresetIndex();
@@ -262,7 +352,170 @@ void PresetBar::refreshFromProcessor()
     slotAButton.setToggleState (activeBuffer == 0, juce::dontSendNotification);
     slotBButton.setToggleState (activeBuffer == 1, juce::dontSendNotification);
 
-    repaint();
+    // A newly active preset - recalled here, by the host, or just saved -
+    // scrolls into view if it is not already. Before the row has a size
+    // (the editor is still being built) that waits for resized().
+    if ((int) activeKind != shownPresetKind || activeIndex != shownPresetIndex)
+    {
+        const auto firstLook = shownPresetKind < 0;
+        shownPresetKind = (int) activeKind;
+        shownPresetIndex = activeIndex;
+
+        if (presetViewport.getWidth() <= 0)
+            needsInitialScroll = true;
+        else if (auto* target = activePresetComponent())
+            scrollToShow (target, ! firstLook);
+    }
+}
+
+juce::Component* PresetBar::activePresetComponent() const
+{
+    const auto index = processor.getActivePresetIndex();
+
+    switch (processor.getActivePresetKind())
+    {
+        case HorizonPadAudioProcessor::PresetKind::factory: return presetButtons[index];
+        case HorizonPadAudioProcessor::PresetKind::user:    return userPresetPills[index];
+        case HorizonPadAudioProcessor::PresetKind::none:    break;
+    }
+
+    return nullptr;
+}
+
+void PresetBar::scrollToShow (juce::Component* target, bool animate)
+{
+    const auto viewX = presetViewport.getViewPositionX();
+    const auto viewWidth = presetViewport.getViewWidth();
+
+    // A pill that is still growing in has not reached its width yet.
+    auto bounds = target->getBounds();
+
+    if (auto* pill = dynamic_cast<UserPresetPill*> (target))
+        bounds.setWidth (pill->preferredWidth());
+
+    auto targetX = viewX;
+
+    if (bounds.getX() - kScrollEdgeRoom < viewX)
+        targetX = bounds.getX() - kScrollEdgeRoom;
+    else if (bounds.getRight() + kScrollEdgeRoom > viewX + viewWidth)
+        targetX = bounds.getRight() + kScrollEdgeRoom - viewWidth;
+
+    // No upper clamp here: a pill still growing in has not widened the row
+    // yet, and the viewport clamps every position it is given anyway.
+    targetX = juce::jmax (0, targetX);
+
+    if (targetX == viewX)
+        return;
+
+    if (! animate)
+    {
+        presetViewport.setViewPosition (targetX, 0);
+        return;
+    }
+
+    scroll.snapTo ((float) viewX);
+    scroll.target = (float) targetX;
+    scrolling = true;
+    lastScrollX = viewX;
+}
+
+void PresetBar::advance (double now, float dt)
+{
+    // --- Gold highlight: fades from the old preset to the new one.
+    for (int i = 0; i < presetButtons.size(); ++i)
+        if (factoryHighlights[(size_t) i].advance (presetButtons[i]->getToggleState() ? 1.0f : 0.0f,
+                                                   dt, kHighlightIn, kHighlightOut, 2.0e-3f))
+            applyFactoryHighlight (i);
+
+    // --- Saved pills: highlight, growing in, shrinking out (then deleted).
+    bool layoutNeeded = false;
+
+    for (auto* pill : userPresetPills)
+        layoutNeeded = pill->advance (dt) || layoutNeeded;
+
+    for (int i = userPresetPills.size(); --i >= 0;)
+    {
+        if (userPresetPills[i]->hasShrunk())
+        {
+            processor.deleteUserPreset (i);
+            userPresetPills.remove (i);   // the pills mirror the list, so no rebuild
+            layoutNeeded = true;
+        }
+    }
+
+    if (layoutNeeded)
+    {
+        layOutScrollContent();
+        repaint (presetViewport.getBounds());
+        refreshFromProcessor();
+    }
+
+    // --- Scroll glide toward the active preset; a hand on the row wins.
+    if (scrolling)
+    {
+        if (presetViewport.getViewPositionX() != lastScrollX)
+        {
+            scrolling = false;
+        }
+        else
+        {
+            scroll.advance (dt, kScrollOmega, 0.25f);
+            presetViewport.setViewPosition (juce::roundToInt (scroll.value), 0);
+            lastScrollX = presetViewport.getViewPositionX();   // after the viewport's own clamp
+            scrolling = ! scroll.isSettled();
+        }
+    }
+
+    // --- The ⇄ copy flash: hold, then fade.
+    if (swapFlash.value > 0.0f)
+    {
+        if (! swapFlashTimed)
+        {
+            swapFlashHoldUntil = now + kSwapFlashHold;
+            swapFlashTimed = true;
+        }
+
+        if (now >= swapFlashHoldUntil && swapFlash.advance (0.0f, dt, kSwapFlashFade, kSwapFlashFade, 2.0e-3f))
+            applySwapFlash();
+    }
+}
+
+void PresetBar::applyFactoryHighlight (int index)
+{
+    auto& b = *presetButtons[index];
+    const auto amount = factoryHighlights[(size_t) index].value;
+    const auto textColour = Palette::text.interpolatedWith (Palette::gold, amount);
+
+    b.getProperties().set ("activeAmount", amount);
+    b.setColour (juce::TextButton::textColourOffId, textColour);
+    b.setColour (juce::TextButton::textColourOnId, textColour);
+    b.repaint();
+}
+
+void PresetBar::applySwapFlash()
+{
+    const auto f = swapFlash.value;
+
+    if (f <= 0.0f)
+        swapButton.getProperties().remove ("borderColour");
+    else
+        swapButton.getProperties().set ("borderColour",
+                                        (int) Palette::pillBorder.interpolatedWith (Palette::saveConfirmBorder, f).getARGB());
+
+    swapButton.setColour (juce::TextButton::buttonColourId, Palette::saveConfirmBg.withMultipliedAlpha (f));
+    swapButton.setColour (juce::TextButton::textColourOffId, Palette::textFaint.interpolatedWith (Palette::text, f));
+    swapButton.repaint();
+}
+
+void PresetBar::setBackdropColour (juce::Colour colour)
+{
+    if (colour == backdrop)
+        return;
+
+    backdrop = colour;
+
+    if (presetScrollContent.getWidth() > presetViewport.getWidth())
+        repaint (presetViewport.getBounds());
 }
 
 void PresetBar::resized()
@@ -304,6 +557,14 @@ void PresetBar::resized()
     // can exceed the viewport's visible width, which is the point.
     presetViewport.setBounds (r);
     layOutScrollContent();
+
+    if (needsInitialScroll && presetViewport.getWidth() > 0)
+    {
+        needsInitialScroll = false;
+
+        if (auto* target = activePresetComponent())
+            scrollToShow (target, false);
+    }
 }
 
 void PresetBar::layOutScrollContent()
@@ -313,16 +574,18 @@ void PresetBar::layOutScrollContent()
 
     for (auto* b : presetButtons)
     {
-        const auto w = juce::jmax (70, b->getButtonText().length() * 9 + 28);
+        const auto w = factoryPillWidth (*b);
         b->setBounds (juce::Rectangle<int> (x, 0, w, rowHeight).reduced (2));
-        x += w + 10;
+        x += w + kPillGap;
     }
 
+    // Growing and shrinking pills take their share of the width (and of the
+    // gap after them) as they go, so the pills beside them slide.
     for (auto* pill : userPresetPills)
     {
-        const auto w = pill->preferredWidth();
-        pill->setBounds (juce::Rectangle<int> (x, 0, w, rowHeight).reduced (2));
-        x += w + 10;
+        const auto w = pill->currentWidth();
+        pill->setBounds (juce::Rectangle<int> (x, 0, w, rowHeight).reduced (w > 4 ? 2 : 0, 2));
+        x += w + juce::roundToInt ((float) kPillGap * juce::jlimit (0.0f, 1.0f, pill->getPresence()));
     }
 
     presetScrollContent.setSize (juce::jmax (presetViewport.getWidth(), x), rowHeight);
@@ -362,6 +625,8 @@ void PresetBar::paintOverChildren (juce::Graphics& g)
     // to, and only on the edge that currently has it. Drawn over the
     // children (paint() runs *before* them) so it actually shows on top of
     // whatever preset pill happens to sit at that edge, not underneath it.
+    // It fades into `backdrop`, the sky behind this row, which changes with
+    // FILTER (setBackdropColour()).
     if (presetScrollContent.getWidth() <= presetViewport.getWidth())
         return;
 
@@ -372,8 +637,8 @@ void PresetBar::paintOverChildren (juce::Graphics& g)
     if (scrollX + presetViewport.getWidth() < presetScrollContent.getWidth())
     {
         auto fadeArea = viewportBounds.withTrimmedLeft (viewportBounds.getWidth() - fadeWidth).toFloat();
-        juce::ColourGradient fade (Palette::presetRowBackdrop.withAlpha (0.0f), fadeArea.getX(), 0.0f,
-                                   Palette::presetRowBackdrop, fadeArea.getRight(), 0.0f, false);
+        juce::ColourGradient fade (backdrop.withAlpha (0.0f), fadeArea.getX(), 0.0f,
+                                   backdrop, fadeArea.getRight(), 0.0f, false);
         g.setGradientFill (fade);
         g.fillRect (fadeArea);
     }
@@ -381,8 +646,8 @@ void PresetBar::paintOverChildren (juce::Graphics& g)
     if (scrollX > 0)
     {
         auto fadeArea = viewportBounds.withTrimmedRight (viewportBounds.getWidth() - fadeWidth).toFloat();
-        juce::ColourGradient fade (Palette::presetRowBackdrop, fadeArea.getX(), 0.0f,
-                                   Palette::presetRowBackdrop.withAlpha (0.0f), fadeArea.getRight(), 0.0f, false);
+        juce::ColourGradient fade (backdrop, fadeArea.getX(), 0.0f,
+                                   backdrop.withAlpha (0.0f), fadeArea.getRight(), 0.0f, false);
         g.setGradientFill (fade);
         g.fillRect (fadeArea);
     }
