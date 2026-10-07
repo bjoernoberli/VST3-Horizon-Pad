@@ -239,11 +239,6 @@ table for the full semantics of each macro. All are smoothed
 - User presets (`UserPresetStore`, `UserPresets.xml`) are message-thread-only
   — created/read/deleted exclusively from GUI actions, so no extra sync is
   needed.
-- For the editor, the audio thread publishes output and per-layer RMS over a
-  20 ms window (atomics; the mix itself is untouched, null-tested
-  bit-identical) and the processor bumps a preset-recall and an A/B-switch
-  counter (release/acquire, after the active-preset fields are set) so the
-  editor can tell a recall from automation.
 
 See the class doc comment at the top of `Source/PluginProcessor.h` for the
 full thread-safety model before touching processor state.
@@ -253,29 +248,10 @@ full thread-safety model before touching processor state.
 Fixed 1080×748 window (`setResizable(false, false)`), pixel-accurate to a
 design handoff — every child paints its own precise layout rather than
 scaling a shared "design surface". `HorizonLookAndFeel` centralizes
-palette/typography/the ring knob painter; other classes are one widget each
+palette/typography/panel painters; other classes are one widget each
 (`PadKnob` = one layer's VOL knob, `MacrosPanel` = the six macros in three
 rows, `WheelSlider` =
-PITCH/MOD, `PresetBar`, `OutputMeter`, `FooterBar`, `TitleBanner`), and
-`HorizonScene` is the sunset panel behind them all.
-
-**Motion (2026-10-07, owner's picks from a proposal menu).** Things move
-only because the sound changed: `HorizonScene` follows FILTER (time of day:
-50% is the designed palette, 0% dusk-blue, 100% golden hour), REVERB (haze on
-the ridge; 20% is the designed blur) and WIDTH (the glow's spread; 40% is the
-designed glow); knobs (`AnimatedKnob`) glide after a preset recall or A/B
-switch in a left-to-right wave, but follow a hand on the knob at once, and
-warm on hover/drag; a recalled preset's name and description fade in under
-the wordmark; each pad card glows with its layer's real output; on open the
-sky rises from night, the logo's sun comes up and the knobs sweep up. The
-value a knob shows is eased; the parameter never is. One frame callback
-(`advanceFrame`, driven by `VBlankAttachment`, capped near 60 fps, with a
-30 Hz timer fallback) replaces the old 15 Hz polling timer, and each widget
-repaints only what changed. The palettes keep the panel text near the
-design's own contrast at the bright end (measured numbers in `HorizonScene.h`)
-and above it everywhere darker - check a change with
-`HorizonPadGuiSnapshot` (`tools/gui_snapshot/`, target not built by default),
-which renders the editor offscreen to PNG at any state.
+PITCH/MOD, `PresetBar`, `OutputMeter`, `FooterBar`, `TitleBanner`).
 
 ## Tier P process
 

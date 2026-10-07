@@ -53,33 +53,6 @@ void HorizonLookAndFeel::drawButtonBackground (juce::Graphics& g, juce::Button& 
 
     const auto& props = button.getProperties();
 
-    // A preset pill whose highlight PresetBar fades in and out: the gold
-    // fill and border follow "activeAmount" (0..1) instead of snapping with
-    // the toggle state, which stays the truth for accessibility. (PresetBar
-    // gives these pills a transparent buttonOnColourId, so the fill above
-    // never doubles this one.)
-    if (props.contains ("activeAmount"))
-    {
-        const auto amount = juce::jlimit (0.0f, 1.0f, (float) props["activeAmount"]);
-
-        if (amount > 0.001f)
-        {
-            auto activeFill = Palette::pillActiveBg.withMultipliedAlpha (amount);
-
-            if (shouldDrawButtonAsDown)
-                activeFill = activeFill.brighter (0.25f);
-            else if (shouldDrawButtonAsHighlighted)
-                activeFill = activeFill.brighter (0.12f);
-
-            g.setColour (activeFill);
-            g.fillRoundedRectangle (bounds, corner);
-        }
-
-        g.setColour (Palette::pillBorder.interpolatedWith (Palette::gold, amount));
-        g.drawRoundedRectangle (bounds, corner, 1.0f);
-        return;
-    }
-
     if ((bool) props.getWithDefault ("noBorder", false))
         return;
 
@@ -109,63 +82,43 @@ void HorizonLookAndFeel::drawRotarySlider (juce::Graphics& g, int x, int y, int 
                                            float sliderPos, float rotaryStartAngle, float rotaryEndAngle,
                                            juce::Slider& slider)
 {
-    // Every knob in the editor is an AnimatedKnob, which paints itself with
-    // drawRingKnob() from its eased value; this covers any plain Slider.
-    drawRingKnob (g, juce::Rectangle<int> (x, y, width, height).toFloat(), sliderPos,
-                  rotaryStartAngle, rotaryEndAngle,
-                  slider.findColour (juce::Slider::rotarySliderFillColourId),
-                  slider.findColour (juce::Slider::rotarySliderOutlineColourId));
-}
-
-void drawRingKnob (juce::Graphics& g, juce::Rectangle<float> area, float proportion,
-                   float rotaryStartAngle, float rotaryEndAngle, juce::Colour accent, juce::Colour trackColour,
-                   float hover, float drag)
-{
     // Ring + dot style, matching the design handoff's ringKnob() helper: a
     // thin dark track ring, an accent-coloured ring lit up to the current
     // value, a dark cap, and a small glowing dot marking the exact value
     // position - not a thick glowing filled arc (an earlier iteration of
     // this look and feel).
-    auto bounds = area.reduced (2.0f);
+    auto bounds = juce::Rectangle<int> (x, y, width, height).toFloat().reduced (2.0f);
     const auto size = juce::jmin (bounds.getWidth(), bounds.getHeight());
     bounds = bounds.withSizeKeepingCentre (size, size);
 
     const auto centre = bounds.getCentre();
     const auto arcThickness = juce::jmax (2.0f, size * 0.1f);
     const auto arcRadius = size * 0.5f - arcThickness * 0.5f;
-    const auto sliderPos = juce::jlimit (0.0f, 1.0f, proportion);
     const auto angle = rotaryStartAngle + sliderPos * (rotaryEndAngle - rotaryStartAngle);
 
-    const juce::PathStrokeType ringStroke (arcThickness, juce::PathStrokeType::curved, juce::PathStrokeType::rounded);
+    const auto accent = slider.findColour (juce::Slider::rotarySliderFillColourId);
 
-    // --- Track (the full 270 degree sweep, dark). Hovering warms it a
-    // little toward the knob's colour.
+    // --- Track (the full 270 degree sweep, dark).
     {
         juce::Path track;
         track.addCentredArc (centre.x, centre.y, arcRadius, arcRadius, 0.0f,
                              rotaryStartAngle, rotaryEndAngle, true);
-        g.setColour (trackColour.interpolatedWith (accent, 0.14f * hover));
-        g.strokePath (track, ringStroke);
+        g.setColour (slider.findColour (juce::Slider::rotarySliderOutlineColourId));
+        g.strokePath (track, juce::PathStrokeType (arcThickness, juce::PathStrokeType::curved,
+                                                   juce::PathStrokeType::rounded));
     }
 
     // --- Value ring: lit from the start up to the current value, same
     // thickness as the track (a ring reading as "how full", not a fader).
-    // While dragged, a soft wider halo of the same arc lights it up.
     if (sliderPos > 0.001f)
     {
         juce::Path value;
         value.addCentredArc (centre.x, centre.y, arcRadius, arcRadius, 0.0f,
                              rotaryStartAngle, angle, true);
 
-        if (drag > 0.001f)
-        {
-            g.setColour (accent.withAlpha (0.20f * drag));
-            g.strokePath (value, juce::PathStrokeType (arcThickness * 2.4f, juce::PathStrokeType::curved,
-                                                       juce::PathStrokeType::rounded));
-        }
-
-        g.setColour (accent.brighter (0.12f * juce::jmax (hover, drag)));
-        g.strokePath (value, ringStroke);
+        g.setColour (accent);
+        g.strokePath (value, juce::PathStrokeType (arcThickness, juce::PathStrokeType::curved,
+                                                   juce::PathStrokeType::rounded));
     }
 
     // --- Dark cap (mostly empty centre - the design's knobs read as rings,
@@ -181,15 +134,13 @@ void drawRingKnob (juce::Graphics& g, juce::Rectangle<float> area, float proport
         g.fillEllipse (capBounds);
     }
 
-    // --- Glowing dot at the current value's position along the ring; its
-    // glow brightens on hover and swells while dragged.
+    // --- Glowing dot at the current value's position along the ring.
     {
         const auto dotCentre = centre.getPointOnCircumference (arcRadius, angle);
         const auto dotRadius = juce::jmax (2.5f, size * 0.057f);
-        const auto haloDiameter = dotRadius * (3.2f + 1.4f * drag);
 
-        g.setColour (accent.withAlpha (0.30f + 0.12f * hover + 0.20f * drag));
-        g.fillEllipse (juce::Rectangle<float> (haloDiameter, haloDiameter).withCentre (dotCentre));
+        g.setColour (accent.withAlpha (0.30f));
+        g.fillEllipse (juce::Rectangle<float> (dotRadius * 3.2f, dotRadius * 3.2f).withCentre (dotCentre));
 
         g.setColour (accent);
         g.fillEllipse (juce::Rectangle<float> (dotRadius * 2.0f, dotRadius * 2.0f).withCentre (dotCentre));
@@ -236,6 +187,115 @@ void drawPanel (juce::Graphics& g, juce::Rectangle<float> bounds, juce::Colour f
 
     g.setColour (Palette::cardBorder);
     g.drawRoundedRectangle (bounds.reduced (0.5f), corner, 1.0f);
+}
+
+void drawHorizonPanel (juce::Graphics& g, juce::Rectangle<float> bounds)
+{
+    constexpr float corner = 24.0f;
+    const auto windowBottom = bounds.getBottom(); // bounds gets shrunk below; keep the original edge
+
+    juce::Path panelPath;
+    panelPath.addRoundedRectangle (bounds, corner);
+
+    {
+        juce::Graphics::ScopedSaveState save (g);
+        g.reduceClipRegion (panelPath);
+
+        // --- Gradient fill: pale, cool sage at the top of the window
+        // warming down to a glowing red-orange at the bottom, matching a
+        // sunset-over-mountains reference photo's own top-to-bottom
+        // progression (see the Palette::panelGradient* doc comment).
+        juce::ColourGradient grad (Palette::panelGradientTop, bounds.getX(), bounds.getY(),
+                                   Palette::panelGradientBottom, bounds.getX(), bounds.getBottom(), false);
+        grad.addColour (0.55, Palette::panelGradientUpper);
+        grad.addColour (0.82, Palette::panelGradientLower);
+        g.setGradientFill (grad);
+        g.fillRect (bounds);
+
+        // --- Soft warm glow, low and centred - a low sun glowing just
+        // behind the ridge, drawn before the skyline so the mountains read
+        // as a dark silhouette cut into the glow (as in the reference photo).
+        {
+            const auto glowDiameter = 640.0f;
+            const auto glowCentre = juce::Point<float> (bounds.getCentreX(), windowBottom - 40.0f);
+
+            juce::ColourGradient radial (Palette::glow, glowCentre.x, glowCentre.y,
+                                        Palette::glow.withAlpha (0.0f), glowCentre.x, glowCentre.y - glowDiameter * 0.5f, true);
+            g.setGradientFill (radial);
+            g.fillEllipse (juce::Rectangle<float> (glowDiameter, glowDiameter).withCentre (glowCentre));
+        }
+
+        // --- Soft dark waves along the bottom: the same jagged mountain
+        // silhouette points, heavily gaussian-blurred so the peaks read as
+        // soft, indistinct swells rather than a crisp skyline. Rendered to
+        // an offscreen image and blurred once, then cached (the panel is a
+        // fixed size and the shape never changes), since a full-kernel
+        // convolution every repaint would be wasteful.
+        {
+            const auto skylineHeight = juce::jmin (120.0f, bounds.getHeight() * 0.4f);
+            auto skylineArea = bounds.removeFromBottom (skylineHeight);
+            const auto areaInt = skylineArea.getSmallestIntegerContainer();
+
+            static juce::Image blurredWaves;
+            static juce::Rectangle<int> cachedArea;
+            constexpr int blurMargin = 40; // headroom so the blur can feather without a hard cutoff at either edge
+
+            if (blurredWaves.isNull() || cachedArea != areaInt)
+            {
+                cachedArea = areaInt;
+
+                const auto imgW = juce::jmax (1, areaInt.getWidth());
+                const auto imgH = areaInt.getHeight() + blurMargin * 2;
+
+                juce::Image raw (juce::Image::ARGB, imgW, imgH, true);
+                {
+                    juce::Graphics ig (raw);
+                    const auto w = (float) imgW;
+                    const auto h = (float) areaInt.getHeight();
+                    const auto top = (float) blurMargin;
+                    const auto extendedBottom = top + h + (float) blurMargin;
+
+                    // The zigzag top boundary, same points as before, but the
+                    // bottom edge is pushed blurMargin further down than the
+                    // visible area instead of stopping exactly at it - solid
+                    // fill for the blur to feather *within*, so the true
+                    // bottom edge comes out fully opaque instead of fading
+                    // toward transparent (which let the panel's orange
+                    // gradient show through in a thin strip at the very
+                    // bottom - the bug this margin fixes).
+                    const float pointsPct[][2] {
+                        { 0.0f, 78.0f }, { 9.0f, 60.0f }, { 18.0f, 82.0f },
+                        { 29.0f, 55.0f }, { 40.0f, 84.0f }, { 52.0f, 58.0f }, { 64.0f, 86.0f },
+                        { 76.0f, 56.0f }, { 88.0f, 80.0f }, { 100.0f, 62.0f },
+                    };
+
+                    juce::Path skyline;
+                    skyline.startNewSubPath (0.0f, extendedBottom);
+                    skyline.lineTo (pointsPct[0][0] * 0.01f * w, top + pointsPct[0][1] * 0.01f * h);
+
+                    for (auto& p : pointsPct)
+                        skyline.lineTo (p[0] * 0.01f * w, top + p[1] * 0.01f * h);
+
+                    skyline.lineTo (w, extendedBottom);
+                    skyline.closeSubPath();
+
+                    ig.setColour (Palette::skyline.withAlpha (1.0f)); // fully opaque: read as the mountains' own colour, never a tint of the sky behind them
+                    ig.fillPath (skyline);
+                }
+
+                juce::ImageConvolutionKernel kernel (33);
+                kernel.createGaussianBlur (14.0f);
+
+                blurredWaves = juce::Image (juce::Image::ARGB, imgW, imgH, true);
+                kernel.applyToImage (blurredWaves, raw, raw.getBounds());
+            }
+
+            g.drawImageAt (blurredWaves, areaInt.getX(), areaInt.getY() - blurMargin);
+        }
+    }
+
+    g.setColour (Palette::panelBorder);
+    g.strokePath (panelPath, juce::PathStrokeType (1.0f));
 }
 
 ColumnSlots computeColumnSlots (juce::Rectangle<int> cardBounds)

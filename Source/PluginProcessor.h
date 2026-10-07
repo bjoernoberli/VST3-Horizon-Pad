@@ -123,26 +123,8 @@ public:
     void switchBuffer (int index);
     void copyActiveBufferToOtherBuffer();
 
-    /** Output RMS (both channels) over the last meter window (kMeterWindowSeconds),
-        for the editor's live meter. 0..1. */
+    /** RMS of the last processed block, for the editor's live meter. 0..1. */
     float getOutputLevel() const noexcept { return outputLevel.load (std::memory_order_relaxed); }
-
-    /** One layer's RMS after its VOL gain and before the shared reverb, over the
-        same window - what that pad contributes right now. For the pad cards'
-        level glow. 0..1. */
-    float getLayerLevel (int layerIndex) const noexcept
-    {
-        return juce::isPositiveAndBelow (layerIndex, horizon::kNumLayers)
-                 ? layerLevels[(size_t) layerIndex].load (std::memory_order_relaxed)
-                 : 0.0f;
-    }
-
-    /** Bumped on every preset recall (factory or user, even of the preset that
-        is already active) and every A/B switch, so the editor can tell a recall
-        from automation. Incremented after the active-preset fields are set and
-        before any parameter moves (release); read with acquire. */
-    int getPresetRecallCount() const noexcept { return presetRecallCount.load (std::memory_order_acquire); }
-    int getBufferSwitchCount() const noexcept { return bufferSwitchCount.load (std::memory_order_acquire); }
 
 private:
     static juce::AudioProcessorValueTreeState::ParameterLayout createParameterLayout();
@@ -215,26 +197,7 @@ private:
     void releaseSlot (int slot);
 
     std::atomic<int> currentProgram { 0 };
-
-    /*  Level meters for the editor: the audio thread accumulates, the editor
-        polls the atomics from its frame callback.
-
-        Accumulated over a fixed window rather than published per block, so
-        the reading does not depend on the host's block size: a 64-sample
-        block is 1.3 ms, shorter than one cycle of a low note, and its RMS
-        swings with the waveform's phase. 20 ms still resolves Bloom's 3.2 Hz
-        tremolo comfortably. The sums are audio-thread only. */
-    static constexpr double kMeterWindowSeconds = 0.02;
-    int meterWindowSamples = 960;                 // set in prepareToPlay
-    int meterSampleCount = 0;
-    float outputSumSquares = 0.0f;
-    std::array<float, (size_t) horizon::kNumLayers> layerSumSquares {};
-
     std::atomic<float> outputLevel { 0.0f };
-    std::array<std::atomic<float>, (size_t) horizon::kNumLayers> layerLevels {};
-
-    std::atomic<int> presetRecallCount { 0 };
-    std::atomic<int> bufferSwitchCount { 0 };
 
     // Set (message thread, by applyPreset()/applyUserPreset()/switchBuffer())
     // whenever an instant full-parameter jump happens; consumed at the top of

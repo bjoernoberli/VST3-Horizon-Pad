@@ -12,18 +12,12 @@ FooterBar::FooterBar (HorizonPadAudioProcessor& processorToUse)
 
 void FooterBar::refreshFromProcessor()
 {
-    const auto buffer = processor.getActiveBufferIndex();
-
-    if (buffer != shownBuffer)
-    {
-        shownBuffer = buffer;
-        repaint();
-    }
+    repaint();
 }
 
 void FooterBar::paint (juce::Graphics& g)
 {
-    // No background/skyline of its own - the shared panel (HorizonScene)
+    // No background/skyline of its own - the shared panel (drawHorizonPanel)
     // already paints the gradient and mountain silhouette behind the whole
     // window; this strip only draws the top divider and the three labels.
     auto bounds = getLocalBounds().toFloat();

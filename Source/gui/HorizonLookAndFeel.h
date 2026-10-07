@@ -23,9 +23,8 @@ namespace Palette
     // like a low sun glowing behind the ridge.
     // Colours are picked off a reference sunset-over-mountains photo the
     // user supplied, darkened where needed (mainly the top stop) so the
-    // wordmark/labels drawn directly on the panel stay readable. This is
-    // the panel at FILTER 50%; HorizonScene moves it toward dusk or golden
-    // hour with the FILTER macro.
+    // wordmark/labels drawn directly on the panel stay readable. See
+    // drawHorizonPanel().
     const juce::Colour panelGradientBottom { 0xffcf4a1c };
     const juce::Colour panelGradientLower  { 0xffb35a24 };
     const juce::Colour panelGradientUpper  { 0xff8a6a3c };
@@ -66,6 +65,17 @@ namespace Palette
 
     const juce::Colour dividerColor     { 0x80282e38 };
 
+    // The panel's own background gradient is vertical only (same colour
+    // across any horizontal row - see drawHorizonPanel()), so a single solid
+    // colour can stand in for "whatever's really behind this" as long as a
+    // component knows its own fixed y-band. This is that colour for the
+    // preset row specifically (PresetBar sits at a fixed y in the editor's
+    // layout, ~34% down the window) - used for the presets' fade-to-
+    // background scroll cue instead of an unrelated fixed dark tone, which
+    // read as a harsh block rather than a fade. Recompute if the editor's
+    // padding/header layout ever changes the preset row's y-position.
+    const juce::Colour presetRowBackdrop { 0xff71603f };
+
     const juce::Colour knobTrack        { 0xff2a2e36 }; // unlit portion of a ring knob
     const juce::Colour knobInner        { 0xff12161d }; // ring knob's dark cap
     const juce::Colour dotUnlit         { 0xff2f333b }; // layer status dot when silent
@@ -75,9 +85,6 @@ namespace Palette
     const juce::Colour wordmarkGoldEnd  { 0xffeabb79 };
 
     const juce::Colour gold             { 0xfff5ae39 }; // the one warm accent: active borders/text, wheel thumbs
-    const juce::Colour presetTitle      { 0xfff3e6c8 }; // a recalled preset's name under the wordmark - a warm cream
-                                                          // rather than the wordmark's gold, which falls below 4.5:1 on the
-                                                          // golden-hour sky (HorizonScene) at that size
     const juce::Colour thumbGlow        { 0x80f5ae39 };
 
     // Per-pad accents, in LayerIndex order: Root, Clearing, Expanse, Bloom.
@@ -159,10 +166,7 @@ inline juce::Font titleFont (float height)
                                   preset" control;
       - "borderColour" (int, packed ARGB) - a fixed border colour overriding
                                   the default/gold choice (e.g. the green
-                                  "Save" confirm button);
-      - "activeAmount" (float) - a preset pill's highlight, 0..1, faded by
-                                  PresetBar: gold fill and border follow it
-                                  instead of the toggle state.
+                                  "Save" confirm button).
 */
 class HorizonLookAndFeel final : public juce::LookAndFeel_V4
 {
@@ -191,16 +195,12 @@ void drawPanel (juce::Graphics& g, juce::Rectangle<float> bounds,
                 juce::Colour fill = Palette::cardBg, float corner = 10.0f);
 
 /**
-    The ring knob, matching the design handoff's ringKnob() helper: a dark
-    track, the value ring in the accent colour, a dark cap and a glowing dot
-    at the value. `proportion` is 0..1 along the sweep. `hover` and `drag`
-    (0..1) are AnimatedKnob's highlight fades: hover warms the track and
-    brightens the dot's glow, drag lights the value ring and swells the dot.
-    Draws inside `area` reduced by 2 px.
+    Paints the one shared panel that is the whole plugin window - a sunset
+    gradient fill, border, a heavily blurred mountain silhouette (soft dark
+    waves) along the bottom, and a low, centred glow behind it. Call once
+    from the editor's paint(), behind every (transparent) child.
 */
-void drawRingKnob (juce::Graphics& g, juce::Rectangle<float> area, float proportion,
-                   float rotaryStartAngle, float rotaryEndAngle, juce::Colour accent, juce::Colour trackColour,
-                   float hover = 0.0f, float drag = 0.0f);
+void drawHorizonPanel (juce::Graphics& g, juce::Rectangle<float> bounds);
 
 /**
     The fixed vertical slot layout every grid card (PITCH, MOD, ROOT,

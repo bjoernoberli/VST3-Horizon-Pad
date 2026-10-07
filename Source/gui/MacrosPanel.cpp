@@ -8,16 +8,20 @@ void MacrosPanel::setUpKnob (Knob& knob, const juce::String& caption, const juce
                              const char* paramId, juce::Colour accent, HorizonPadAudioProcessor& processor)
 {
     knob.caption = caption;
-    knob.accent = accent;
-    setUpRingKnob (knob.slider, accent);
+    knob.slider.setColour (juce::Slider::rotarySliderFillColourId, accent);
+    knob.slider.setColour (juce::Slider::rotarySliderOutlineColourId, Palette::knobTrack);
+    // -135deg..+135deg (a 270deg sweep with a 90deg gap centred at the
+    // bottom), matching the design handoff's ringKnob() geometry exactly.
+    knob.slider.setRotaryParameters (juce::MathConstants<float>::pi * 1.25f,
+                                     juce::MathConstants<float>::pi * 2.75f,
+                                     true);
     knob.slider.setTooltip (tooltip);
     addAndMakeVisible (knob.slider);
 
     knob.attachment = std::make_unique<juce::AudioProcessorValueTreeState::SliderAttachment> (
         processor.getAPVTS(), paramId, knob.slider);
-    knob.slider.syncDisplay();
 
-    knob.slider.onValueChange = [this, &knob] { repaint (knob.valueCell); };
+    knob.slider.onValueChange = [this] { repaint(); };
 }
 
 MacrosPanel::MacrosPanel (HorizonPadAudioProcessor& processor)
@@ -49,19 +53,6 @@ MacrosPanel::MacrosPanel (HorizonPadAudioProcessor& processor)
 
 MacrosPanel::~MacrosPanel() = default;
 
-void MacrosPanel::advance (double now, float dt)
-{
-    for (auto& knob : knobs)
-        if (knob.slider.advance (now, dt))
-            repaint (knob.valueCell);
-}
-
-void MacrosPanel::beginWave (double startTime, double rowDelay, bool fromZero)
-{
-    for (size_t i = 0; i < knobs.size(); ++i)
-        knobs[i].slider.beginWave (startTime + rowDelay * (double) (i / 2), fromZero);
-}
-
 void MacrosPanel::resized()
 {
     const auto slots = computeColumnSlots (getLocalBounds());
@@ -70,19 +61,9 @@ void MacrosPanel::resized()
     for (size_t row = 0; row < m.rows.size(); ++row)
     {
         auto control = m.rows[row].control;
-        auto value = m.rows[row].value;
         const auto colWidth = control.getWidth() / 2;
-        const auto valueColWidth = value.getWidth() / 2;
-
-        auto& left = knobs[row * 2];
-        auto& right = knobs[row * 2 + 1];
-
-        left.slider.setBounds (left.slider.boundsForRing (
-            control.removeFromLeft (colWidth).withSizeKeepingCentre (m.knobSize, m.knobSize)));
-        right.slider.setBounds (right.slider.boundsForRing (control.withSizeKeepingCentre (m.knobSize, m.knobSize)));
-
-        left.valueCell = value.removeFromLeft (valueColWidth);
-        right.valueCell = value;
+        knobs[row * 2].slider.setBounds (control.removeFromLeft (colWidth).withSizeKeepingCentre (m.knobSize, m.knobSize));
+        knobs[row * 2 + 1].slider.setBounds (control.withSizeKeepingCentre (m.knobSize, m.knobSize));
     }
 }
 
@@ -110,27 +91,37 @@ void MacrosPanel::paint (juce::Graphics& g)
     for (auto y : m.dividerYs)
         g.fillRect (juce::Rectangle<int> (m.rows[0].label.getX(), y, m.rows[0].label.getWidth(), 1));
 
-    for (size_t row = 0; row < m.rows.size(); ++row)
+    const auto drawPair = [&] (juce::Rectangle<int> labelArea, juce::Rectangle<int> valueArea,
+                               float labelSize, float valueSize, int i0, int i1)
     {
-        auto labelArea = m.rows[row].label;
-        const std::array<juce::Rectangle<int>, 2> labelCols { labelArea.removeFromLeft (labelArea.getWidth() / 2), labelArea };
+        const auto labelColWidth = labelArea.getWidth() / 2;
+        const auto valueColWidth = valueArea.getWidth() / 2;
 
-        for (size_t col = 0; col < 2; ++col)
+        const std::array<juce::Rectangle<int>, 2> labelCols {
+            labelArea.removeFromLeft (labelColWidth), labelArea
+        };
+        const std::array<juce::Rectangle<int>, 2> valueCols {
+            valueArea.removeFromLeft (valueColWidth), valueArea
+        };
+        const std::array<int, 2> indices { i0, i1 };
+
+        for (int col = 0; col < 2; ++col)
         {
-            auto& knob = knobs[row * 2 + col];
+            const auto& knob = knobs[(size_t) indices[(size_t) col]];
 
             g.setColour (Palette::macroLabel);
-            g.setFont (labelFont (10.0f, true));
-            g.drawText (knob.caption, labelCols[col], juce::Justification::centred);
+            g.setFont (labelFont (labelSize, true));
+            g.drawText (knob.caption, labelCols[(size_t) col], juce::Justification::centred);
 
-            // The readout counts along with the knob's glide, and lights in
-            // the macro's colour while it is hovered or dragged.
-            g.setColour (Palette::textDim.interpolatedWith (knob.accent, knob.slider.getHighlight()));
-            g.setFont (labelFont (11.0f));
-            g.drawText (juce::String (juce::roundToInt (knob.slider.getDisplayValue() * 100.0)) + "%",
-                       knob.valueCell, juce::Justification::centred);
+            g.setColour (Palette::textDim);
+            g.setFont (labelFont (valueSize));
+            g.drawText (juce::String (juce::roundToInt (knob.slider.getValue() * 100.0)) + "%",
+                       valueCols[(size_t) col], juce::Justification::centred);
         }
-    }
+    };
+
+    for (size_t row = 0; row < m.rows.size(); ++row)
+        drawPair (m.rows[row].label, m.rows[row].value, 10.0f, 11.0f, (int) row * 2, (int) row * 2 + 1);
 }
 
 } // namespace horizon::ui

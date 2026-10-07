@@ -1,6 +1,6 @@
 #pragma once
 
-#include "AnimatedKnob.h"
+#include "HorizonLookAndFeel.h"
 
 class HorizonPadAudioProcessor;
 
@@ -14,11 +14,6 @@ namespace horizon::ui
     it). Volume is the only per-pad control: there is no per-layer tone
     block, each pad's character is fixed by its own DSP, and WIDTH - once a
     second knob on every card - is a macro acting on all four (MacrosPanel).
-
-    The card shows its pad's life: the dot and a halo around the ring glow
-    with the layer's real output (HorizonPadAudioProcessor::getLayerLevel()),
-    so Bloom pulses with its tremolo, Expanse swells in on its long attack
-    and a muted pad stays dark. In silence the card looks as designed.
 */
 class PadKnob final : public juce::Component
 {
@@ -28,28 +23,16 @@ public:
             const char* volumeParamId);
     ~PadKnob() override;
 
-    /** One editor frame: the knob's glide and fades, and the level glow
-        from `layerRms` (the layer's current RMS, 0..1). */
-    void advance (double now, float dt, float layerRms);
-
-    AnimatedKnob& getKnob() noexcept { return volumeSlider; }
-
     void paint (juce::Graphics&) override;
     void resized() override;
 
 private:
-    juce::Rectangle<int> dotArea() const;
-    juce::Rectangle<int> haloArea() const;
-    juce::Rectangle<int> readoutArea() const;
-
     const juce::Colour accent;
     const juce::String caption;
     const juce::String subtitle;
 
-    AnimatedKnob volumeSlider { 8 };
+    juce::Slider volumeSlider { juce::Slider::RotaryHorizontalVerticalDrag, juce::Slider::NoTextBox };
     std::unique_ptr<juce::AudioProcessorValueTreeState::SliderAttachment> volumeAttachment;
-
-    motion::Follower levelGlow;   // 0..1, see advance()
 
     JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR (PadKnob)
 };

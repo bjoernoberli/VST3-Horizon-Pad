@@ -4,7 +4,13 @@
 namespace horizon::ui
 {
 
-namespace
+OutputMeter::OutputMeter (HorizonPadAudioProcessor& processorToUse)
+    : processor (processorToUse)
+{
+    setTooltip ("Live output level (RMS) - a reference only, not a control.");
+}
+
+void OutputMeter::refreshFromProcessor()
 {
     // Standard peak/VU-meter convention: map the level in dB, not raw linear
     // amplitude, onto the fill. Ear and eye both track level logarithmically,
@@ -13,61 +19,10 @@ namespace
     // linear boost that only "worked" for typical playing levels and still
     // pinned to 100% well before actual clipping).
     constexpr float kFloorDb = -48.0f;
-
-    // Ballistics: quick up, slower down. The peak line holds, then falls a
-    // third of the meter per second.
-    constexpr float kRiseSeconds = 0.04f;
-    constexpr float kFallSeconds = 0.30f;
-    constexpr double kPeakHoldSeconds = 1.2;
-    constexpr float kPeakFallPerSecond = 0.33f;
-}
-
-OutputMeter::OutputMeter (HorizonPadAudioProcessor& processorToUse)
-    : processor (processorToUse)
-{
-    setTooltip ("Live output level (RMS) - a reference only, not a control.");
-}
-
-juce::Rectangle<float> OutputMeter::trackArea() const
-{
-    // A slim rounded column, matching meterOuterStyle exactly.
-    const auto slots = computeColumnSlots (getLocalBounds());
-    return slots.control.withSizeKeepingCentre (26, slots.control.getHeight()).toFloat();
-}
-
-void OutputMeter::advance (double now, float dt)
-{
     const auto levelDb = juce::Decibels::gainToDecibels (processor.getOutputLevel(), kFloorDb);
     const auto target = juce::jlimit (0.0f, 1.0f, (levelDb - kFloorDb) / -kFloorDb);
-
-    auto changed = displayedLevel.advance (target, dt, kRiseSeconds, kFallSeconds, 1.0e-3f);
-
-    const auto level = displayedLevel.value;
-
-    if (level >= peakLevel)
-    {
-        changed = changed || level > peakLevel;
-        peakLevel = level;
-        peakHoldUntil = now + kPeakHoldSeconds;
-    }
-    else if (now > peakHoldUntil)
-    {
-        peakLevel = juce::jmax (level, peakLevel - kPeakFallPerSecond * dt);
-        changed = true;
-    }
-
-    if (! changed)
-        return;
-
-    repaint (trackArea().getSmallestIntegerContainer().expanded (1));
-
-    const auto percent = juce::roundToInt (level * 100.0f);
-
-    if (percent != shownPercent)
-    {
-        shownPercent = percent;
-        repaint (computeColumnSlots (getLocalBounds()).value);
-    }
+    displayedLevel += (target - displayedLevel) * 0.3f;
+    repaint();
 }
 
 void OutputMeter::paint (juce::Graphics& g)
@@ -88,14 +43,13 @@ void OutputMeter::paint (juce::Graphics& g)
     g.setFont (labelFont (TypeScale::caption).italicised());
     g.drawFittedText ("the valley", slots.caption, juce::Justification::centred, 2);
 
-    const auto track = trackArea();
+    // --- meter track: a slim rounded column, matching meterOuterStyle exactly.
+    auto track = slots.control.withSizeKeepingCentre (26, slots.control.getHeight()).toFloat();
     g.setColour (Palette::meterBg);
     g.fillRoundedRectangle (track, 11.0f);
 
-    const auto level = displayedLevel.value;
     auto fill = track.reduced (1.0f);
-    const auto inner = fill;
-    fill.setTop (fill.getBottom() - fill.getHeight() * level);
+    fill.setTop (fill.getBottom() - fill.getHeight() * displayedLevel);
 
     if (fill.getHeight() > 0.5f)
     {
@@ -105,18 +59,9 @@ void OutputMeter::paint (juce::Graphics& g)
         g.fillRoundedRectangle (fill, 10.0f);
     }
 
-    // --- Peak line: where the level was a moment ago.
-    if (peakLevel > 0.01f && peakLevel > level + 0.004f)
-    {
-        const auto y = inner.getBottom() - inner.getHeight() * peakLevel;
-        const auto line = juce::Rectangle<float> (inner.getX() + 4.0f, y - 1.0f, inner.getWidth() - 8.0f, 2.0f);
-        g.setColour (Palette::meterFillHigh.withAlpha (0.85f));
-        g.fillRoundedRectangle (line.withY (juce::jlimit (inner.getY(), inner.getBottom() - 2.0f, line.getY())), 1.0f);
-    }
-
     g.setColour (Palette::textValue);
     g.setFont (labelFont (TypeScale::value, true));
-    g.drawText (juce::String (juce::roundToInt (level * 100.0f)) + "%",
+    g.drawText (juce::String (juce::roundToInt (displayedLevel * 100.0f)) + "%",
                slots.value, juce::Justification::centred);
 }
 
